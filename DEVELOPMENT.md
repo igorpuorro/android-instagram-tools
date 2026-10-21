@@ -83,6 +83,7 @@ Keys while running (only when started from a terminal):
 |---|---|
 | **n** | next video (skipped videos are never liked, reposted, link-copied or saved) |
 | **p** | pause: hand the phone over (the tool stops touching it) / resume (4.10) |
+| **x** | 2x speed on / off, from the next video (4.4, 4.10) |
 | **w** | cycle play mode: followed → all |
 | **l** | cycle like mode: none → followed → all |
 | **r** | cycle repost mode: none → followed → all |
@@ -108,7 +109,8 @@ At startup the app prints a block with the phone, the Instagram version and the 
 `phone` comes from `getprop` (the hardware serial, not adb's Wi-Fi connection name), `Wi-Fi`/`USB`
 from the adb serial's form. On an Instagram version not in `TESTED_INSTAGRAM` the `instagram`
 line adds "⚠ untested version" — selectors, texts and icon masks (4.7) may need re-checking.
-`keys` says "off" when stdin isn't a terminal (background runs).
+`keys` says "off" when stdin isn't a terminal (background runs) and then names the stop and
+pause files instead.
 
 Unattended runs (keys don't work there — no terminal). Stop with `kill <pid>` (SIGTERM is handled
 like Ctrl-C), or by creating `runs/STOP` (any system; `stop.bat` on Windows) — either way the
@@ -347,8 +349,9 @@ enough.
 ### 4.4 2x speed
 
 Opt-in with `--2x` (it was the default until the CLI was changed; normal speed is now the
-default); key **x** switches it on/off during a run, from the next video (4.10). Instagram plays at 2x **while** the screen edge is pressed. Holding for the whole video would
-interfere with screenshots, so the script **locks** it:
+default); key **x** switches it on/off during a run, from the next video (4.10). Instagram
+plays at 2x **while** the screen edge is pressed. Holding for the whole video would interfere
+with screenshots, so the script **locks** it:
 
 1. `touch.down` at **x = 60, y = 0.3·h** (left edge, upper third).
 2. After 1.2 s, read the hint Instagram shows while the finger is down (it *is* in the UI tree):

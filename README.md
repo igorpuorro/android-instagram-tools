@@ -207,6 +207,8 @@ docker compose up -d                                          # start it (settin
 docker compose logs -f                                        # follow it
 docker compose stop                                           # stop it
 ```
+To use the phone meanwhile, create an empty file `runs/PAUSE` (Windows: `type nul > runs\PAUSE`)
+to pause, and delete it to resume.
 
 Stopping always prints the final statistics. All options: `docker compose run --rm app --help`.
 With Podman, write `podman compose` instead of `docker compose`. **Update:** `git pull`, then
