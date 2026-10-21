@@ -342,7 +342,7 @@ enough.
 ### 4.4 2x speed
 
 Opt-in with `--2x` (it was the default until the CLI was changed; normal speed is now the
-default). Instagram plays at 2x **while** the screen edge is pressed. Holding for the whole video would
+default); key **x** switches it on/off during a run, from the next video (4.10). Instagram plays at 2x **while** the screen edge is pressed. Holding for the whole video would
 interfere with screenshots, so the script **locks** it:
 
 1. `touch.down` at **x = 60, y = 0.3·h** (left edge, upper third).
@@ -729,7 +729,8 @@ loop never blocks. `Player.key()` also checks the stop file `runs/STOP` first: i
 removed and the run ends like `q` (works without a terminal, on every system). `Player.key()` is polled both while scanning the feed and while watching; it handles
 the global keys itself (q raises `Quit`; w / l / r / c / b cycle `args.play` / `args.like` /
 `args.repost` / `args.share_link` / `args.save` in place (one table, `MODE_KEYS`) and log the
-new mode with its cycle, e.g. `like mode: all   (none → followed → [all])`; s prints the stats;
+new mode with its cycle, e.g. `like mode: all   (none → followed → [all])`; x toggles
+`args.speed2x` (2x on/off, `SPEED_MODES`); s prints the stats;
 h/? prints the help block) and
 returns only n and p to the caller.
 
@@ -740,6 +741,7 @@ with the current mode marked inside each key's cycle:
 ── keys ────────────────────────────────────────────────────────
    playback   n  next video (a skipped video gets no like/repost/link/save)
               p  pause / resume (full-screen player only)
+              x  2x speed         off → [on]                from the next video
               w  play mode        followed → [all]
    actions    l  like mode        none → followed → [all]
    (screen    r  repost mode      none → [followed] → all  shows on your profile
@@ -748,8 +750,13 @@ with the current mode marked inside each key's cycle:
    info       s  statistics so far
               h  this help (also ?)
               q  quit
-   set at start: 2x on (--2x)
 ```
+
+**x (2x) applies from the next video**, unlike the modes below: the playing video keeps its
+speed, so the end detector's per-speed settings (`DETECTOR`, chosen when the video opens) stay
+right, and no extra hold-and-slide is needed mid-video. Turning it off needs no unlock either —
+Instagram resets the lock for every video (4.4). Tested live 2026-10-21 (pseudo-terminal, `--2x`,
+x pressed during video 1 → video 2 at 1x, x again → videos 3–4 locked 2x).
 
 Mode changes apply immediately: the like, repost, copy-link and save decisions are made when
 a video ends, so a new mode applies to the video currently playing; switching play to "followed" while a suggested

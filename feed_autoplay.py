@@ -12,8 +12,8 @@ Flow: find a video post in the feed -> tap it (opens full-screen player with sou
 --save none|followed|all which get saved to your private Saved collection (default none).
 
 Keys while running (h shows them):
-  n = next video  p = pause/resume  w = play mode  l = like mode  r = repost mode
-  c = copy-link mode  b = save mode  s = statistics  q = quit
+  n = next video  p = pause/resume  x = 2x on/off  w = play mode  l = like mode
+  r = repost mode  c = copy-link mode  b = save mode  s = statistics  q = quit
 Without keys (background runs): create the file runs/STOP to stop cleanly (stop.bat on Windows).
 
 Run with uv (sets up Python and the packages by itself): uv run feed_autoplay.py --help
@@ -164,6 +164,7 @@ SAVE_MODES = ["none", "followed", "all"]
 SHARE_MODES = ["none", "followed", "all"]
 SHARED_LINKS = Path("runs") / "shared-links.txt"  # every copied link is appended here
 # mode keys: key -> (args attribute, label, cycle, note)
+SPEED_MODES = ["off", "on"]  # key x: 2x speed (--2x sets the start value)
 MODE_KEYS = {
     "w": ("play", "play", PLAY_MODES, "followed = skip accounts you don't follow"),
     "l": ("like", "like", LIKE_MODES, ""),
@@ -362,6 +363,12 @@ class Player:
             new = modes[(modes.index(getattr(self.args, attr)) + 1) % len(modes)]
             setattr(self.args, attr, new)
             log(f"{label} mode: {new}   ({cycle_text(modes, new)})")
+        elif k == "x":
+            # applied when the next video opens: the playing one keeps its speed (and the end
+            # detector's settings for it)
+            self.args.speed2x = not self.args.speed2x
+            new = "on" if self.args.speed2x else "off"
+            log(f"2x: {new} from the next video   ({cycle_text(SPEED_MODES, new)})")
         elif k == "s":
             self.report()
         elif k in ("h", "?"):
@@ -382,6 +389,8 @@ class Player:
         log("── keys " + "─" * 56)
         log(f"   playback   n  next video (a skipped video gets no like/repost/link/save)")
         log(f"              p  pause / resume (full-screen player only)")
+        speed = "x  2x speed".ljust(20) + cycle_text(SPEED_MODES, "on" if a.speed2x else "off")
+        log(f"              {speed:<45} from the next video")
         log(f"              {mode('w')}")
         log(f"   actions    {mode('l')}")
         log(f"   (screen    {mode('r')}")
@@ -390,7 +399,6 @@ class Player:
         log(f"   info       s  statistics so far")
         log(f"              h  this help (also ?)")
         log(f"              q  quit")
-        log(f"   set at start: 2x {'on' if a.speed2x else 'off'} (--2x)")
 
     def player_box(self, top=0.12):
         """Video area of the full-screen player, minus side buttons and caption."""
@@ -1254,7 +1262,7 @@ def main():
                    help="followed (default) = only play videos from accounts you follow, skipping "
                         "suggested ones; all = play every video in the timeline")
     g.add_argument("--2x", dest="speed2x", action="store_true",
-                   help="lock 2x playback speed for each video (default: normal speed)")
+                   help="lock 2x playback speed for each video (default: normal speed; key x toggles it)")
     g.add_argument("--loops", type=int, default=1, help="how many times to watch each video (default 1)")
     g.add_argument("--max-watch", type=float, default=300, help="max seconds per video (default 300)")
 

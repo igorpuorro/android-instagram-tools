@@ -225,7 +225,7 @@ video it watched to the end. The same options and keys apply in A, B and C.
 | Option | Values (default in bold) | What it does |
 |---|---|---|
 | `--play` | **followed** · all | play only videos from accounts you follow, or every video |
-| `--2x` | (off) | play each video at 2x speed |
+| `--2x` | (off) | play each video at 2x speed (key **x** switches it during the run) |
 | `--like` | none · **followed** · all | like the videos watched to the end |
 | `--repost` | **none** · followed · all | repost them (shown on your profile) |
 | `--share-link` | **none** · followed · all | Share → Copy link; links collected in `runs/shared-links.txt` |
@@ -241,11 +241,12 @@ already liked/reposted/saved is left alone. Example:
 
 | Key | | Key | |
 |---|---|---|---|
-| **n** | next video | **r** | repost mode |
-| **p** | pause / resume | **c** | copy-link mode |
+| **n** | next video | **l** | like mode |
+| **p** | pause / resume | **r** | repost mode |
+| **x** | 2x on / off (from the next video) | **c** | copy-link mode |
 | **w** | play mode | **b** | save mode |
-| **l** | like mode | **s** | statistics |
-| **h** / **?** | help | **q** | quit |
+| **s** | statistics | **h** / **?** | help |
+| | | **q** | quit |
 
 Keys work when the tool runs in a terminal window, not in the background.
 
