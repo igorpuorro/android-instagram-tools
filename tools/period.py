@@ -2,7 +2,7 @@
 for traces whose Instagram log has no end line. See DEVELOPMENT.md section 5.
 
 Command line: analyse the frames feed_autoplay.py saves when a video hits --max-watch
-  .venv/bin/python tools/period.py runs/maxwatch-*.npz
+  uv run tools/period.py runs/maxwatch-*.npz
 """
 import sys
 

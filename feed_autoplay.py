@@ -14,19 +14,27 @@ Flow: find a video post in the feed -> tap it (opens full-screen player with sou
 Keys while running (h shows them):
   n = next video  p = pause/resume  w = play mode  l = like mode  r = repost mode
   c = copy-link mode  b = save mode  s = statistics  q = quit
+Without keys (background runs): create the file runs/STOP to stop cleanly (stop.bat on Windows).
+
+Run with uv (sets up Python and the packages by itself): uv run feed_autoplay.py --help
 """
 import argparse
 import os
 import re
-import select
 import signal
 import subprocess
 import sys
-import termios
 import threading
 import time
-import tty
 from pathlib import Path
+
+WINDOWS = os.name == "nt"
+if WINDOWS:
+    import msvcrt
+else:
+    import select
+    import termios
+    import tty
 
 import adbutils
 import numpy as np
@@ -54,24 +62,40 @@ def log(msg):
 
 
 class Keys:
-    """Non-blocking single-key reader for the terminal."""
+    """Non-blocking single-key reader for the terminal (termios on Linux/macOS, msvcrt on
+    Windows). Inert when stdin isn't a terminal (background runs, pipes, tests)."""
 
     def __enter__(self):
-        self.tty = sys.stdin.isatty()  # no keyboard control when not run from a terminal
-        if self.tty:
+        self.tty = sys.stdin.isatty()
+        if self.tty and not WINDOWS:
             self.fd = sys.stdin.fileno()
             self.old = termios.tcgetattr(self.fd)
             tty.setcbreak(self.fd)
         return self
 
     def __exit__(self, *exc):
-        if self.tty:
+        if self.tty and not WINDOWS:
             termios.tcsetattr(self.fd, termios.TCSADRAIN, self.old)
 
     def get(self):
-        if self.tty and select.select([sys.stdin], [], [], 0)[0]:
+        if not self.tty:
+            return None
+        if WINDOWS:
+            if msvcrt.kbhit():
+                ch = msvcrt.getwch()
+                if ch in ("\x00", "\xe0"):  # arrow/function keys come as two codes: ignore
+                    msvcrt.getwch()
+                    return None
+                return ch.lower()
+            return None
+        if select.select([sys.stdin], [], [], 0)[0]:
             return sys.stdin.read(1).lower()
         return None
+
+
+# Creating this file stops a run cleanly (final statistics), on any system and without a
+# terminal: background runs, Windows (no SIGTERM there; stop.bat creates it).
+STOP_FILE = Path("runs") / "STOP"
 
 
 class Quit(Exception):
@@ -286,6 +310,13 @@ class Player:
     def key(self):
         """Handle a pending key press. Global keys (quit, modes, stats, help) are dealt with
         here; n and p are returned for the caller to act on, everything else is None."""
+        if STOP_FILE.exists():
+            try:
+                STOP_FILE.unlink()
+            except OSError:
+                pass
+            log(f"stop requested ({STOP_FILE} found)")
+            raise Quit
         k = self.keys.get()
         if k == "q":
             raise Quit
@@ -646,7 +677,7 @@ class Player:
             np.savez_compressed(fn, t=np.array([t for t, _ in history]),
                                 f=np.array([f for _, f in history]))
             how = (f"docker compose run --rm app tool period.py {fn}" if os.environ.get("FEED_AUTOPLAY_CONTAINER")
-                   else f".venv/bin/python tools/period.py {fn}")
+                   else f"uv run tools/period.py {fn}")
             log(f"  frames saved for diagnosis: {how}")
         except Exception as e:  # diagnostics must never break a run
             log(f"  could not save frames ({type(e).__name__}: {e})")
@@ -1136,7 +1167,8 @@ def startup_report(d, args, keys_on):
     log(f"   actions    like {args.like} · repost {args.repost} · copy link {args.share_link} · "
         f"save {args.save}")
     log(f"   end        " + ("Instagram's log + frame comparison" if args.use_log else "frame comparison only (--no-log)"))
-    log(f"   keys       " + ("press h for help" if keys_on else "off (not started from a terminal; stop with kill/Ctrl-C)"))
+    stop = "stop.bat or create runs\\STOP" if WINDOWS else "Ctrl-C, kill <pid> or create runs/STOP"
+    log(f"   keys       " + ("press h for help" if keys_on else f"off (no terminal) -- stop: {stop}"))
 
 
 def pick_serial():
@@ -1206,11 +1238,25 @@ def main():
     g.add_argument("--max-scrolls", type=int, default=40, help="scrolls without a video before refreshing")
     args = p.parse_args()
 
+    # the log uses symbols/emoji: make sure they can be written even to a redirected file or an
+    # old Windows console (code page), instead of crashing
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
+    try:  # a stop file left over from an earlier run must not stop this one at once
+        STOP_FILE.unlink()
+    except OSError:
+        pass
+
     d = u2.connect(args.serial or pick_serial())
     startup_report(d, args, keys_on=sys.stdin.isatty())
     # `kill <pid>` and `docker/podman stop` send SIGTERM, which would end Python without the
     # final statistics: treat it like Ctrl-C (SIGINT)
     signal.signal(signal.SIGTERM, signal.default_int_handler)
+    if WINDOWS:  # Ctrl+Break in the console window
+        signal.signal(signal.SIGBREAK, signal.default_int_handler)
     ends = EndWatcher(d.serial) if args.use_log else None
     with Keys() as keys:
         player = Player(d, args, keys, ends)

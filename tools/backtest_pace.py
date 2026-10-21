@@ -6,7 +6,7 @@ number of videos actually played in the following hour. Hours containing a long 
 screen, outage: a gap > 15 min) are skipped; such gaps are also left out of the cycle times,
 as the app does.
 
-Usage: .venv/bin/python tools/backtest_pace.py runs/*.log
+Usage: uv run tools/backtest_pace.py runs/*.log
 """
 import re
 import sys

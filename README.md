@@ -6,7 +6,7 @@ like a person would — no Instagram API, no browser.
 
 | Tool | What it does | Status |
 |---|---|---|
-| **[feed_autoplay](#feed_autoplay)** | plays the videos of your home timeline one after another, optionally at 2x, liking / reposting / copying links / saving them | the only tool so far |
+| **[feed_autoplay](#feed_autoplay-reference)** | plays the videos of your home timeline one after another, optionally at 2x, liking / reposting / copying links / saving them | the only tool so far |
 
 > ⚠ Instagram's terms don't allow automated use. Acting at volume can get the account limited
 > (Instagram already refused reposts after ~100 in under 2 hours). Use the tools at your own
@@ -14,22 +14,36 @@ like a person would — no Instagram API, no browser.
 
 ---
 
-## Setup (once, for all tools)
+## Choose how to run it
 
-### What you need
+```mermaid
+flowchart TD
+    Q1{"Which computer?"}
+    Q1 -->|Linux or macOS| A["<b>A. Linux / macOS with uv</b><br/>USB or Wi-Fi"]
+    Q1 -->|Windows| Q2{"Install Docker Desktop<br/>instead of a small tool?"}
+    Q2 -->|"No (simplest)"| B["<b>B. Windows with uv</b><br/>double-click run.bat · USB or Wi-Fi"]
+    Q2 -->|Yes| C["<b>C. Container</b><br/>Docker / Podman · Wi-Fi only"]
+    A -.->|"prefer no Python at all"| C
+```
 
-- An **Android phone** with the Instagram app, logged in.
-- A **computer** on Linux, Windows or macOS.
-- The phone connected to the computer by **USB** or **Wi-Fi debugging** (Android 11+).
+| | [A. Linux / macOS with uv](#a-linux-or-macos-with-uv) | [B. Windows with uv](#b-windows-with-uv) | [C. Container](#c-any-system-in-a-container-docker-or-podman) |
+|---|---|---|---|
+| **You install** | uv (one command) | uv (one command) | Docker Desktop or Podman Desktop |
+| **Phone connection** | USB or Wi-Fi | USB (+ phone maker's driver) or Wi-Fi | Wi-Fi only |
+| **Start** | `uv run feed_autoplay.py` | double-click `run.bat` | `docker compose run --rm app` |
+| **Best for** | everyday use on Linux/macOS | everyday use on Windows | no Python on the computer; same setup everywhere |
+| **Status** | tested on Linux; macOS expected to work | built for Windows, not yet tried there | tested on Linux; not yet tried on Windows |
 
-| Computer | How to run the tools | Status |
-|---|---|---|
-| **Linux** | natively (Python) — or in a container (Docker/Podman) | both tested |
-| **Windows** | in a **container** (Docker Desktop or Podman Desktop), phone over Wi-Fi | built & tested on Linux; not yet tried on Windows itself |
-| **macOS** | natively (Python) — or in a container | expected to work, not tested |
+*USB is the more stable connection for long runs.* Whichever you choose, the tool, its options and
+keys are the same — see the [feed_autoplay reference](#feed_autoplay-reference).
 
-Running natively on **Windows** is not supported (the tools' keyboard controls use
-Linux/macOS-only Python modules) — use the container.
+---
+
+## A. Linux or macOS, with uv
+
+**You need:** an Android phone with Instagram logged in, a Linux or macOS computer, and a USB cable
+or the same Wi-Fi network. [uv](https://docs.astral.sh/uv/) sets up Python, the packages and adb
+by itself on the first run (about a minute) — nothing else to install.
 
 ### 1. Prepare the phone
 
@@ -42,69 +56,169 @@ Linux/macOS-only Python modules) — use the container.
    unlock it (they never try to unlock it themselves).
 4. On first connection over USB, accept the "Allow USB debugging?" prompt on the phone.
 
-### 2a. Install natively (Linux / macOS)
-
-Needs Python 3.10+.
+### 2. Install (once)
 
 ```bash
-git clone <repository URL> android-instagram-tools
+curl -LsSf https://astral.sh/uv/install.sh | sh              # installs uv
+git clone <repository URL> android-instagram-tools          # or download the zip and unzip it
 cd android-instagram-tools
-python3 -m venv .venv
-.venv/bin/pip install uiautomator2 numpy
 ```
 
-No separate adb install is needed on Linux: one comes with the Python packages, in
-`.venv/lib/python3*/site-packages/adbutils/binaries/adb` (called `adb` below). On macOS, if that
-folder has no `adb`, install it with `brew install android-platform-tools`.
+### 3. Connect the phone
 
-**Connect the phone:**
 - **USB:** plug it in — nothing else to do.
-- **Wi-Fi:** pair once with `adb pair <ip:port> <code>` (on the phone: Wireless debugging →
-  "Pair device with pairing code"), then `adb connect <ip:port>` with the IP & port shown on the
-  Wireless debugging screen. Check with `adb devices`.
+- **Wi-Fi:** pair once, then connect (IP & port from the phone's Wireless debugging screen):
+  ```bash
+  uv run tools/adb.py pair <pairing ip:port> <code>   # "Pair device with pairing code"
+  uv run tools/adb.py connect <ip:port>
+  uv run tools/adb.py devices                          # check: the phone shows as "device"
+  ```
 
-### 2b. Install in a container (Windows, or any system)
+### 4. Run
 
-Needs **Docker Desktop** or **Podman Desktop** only — no Python. The phone is reached over
-**Wi-Fi debugging**. In a terminal in the project folder:
-
-```powershell
-copy .env.example .env      # Linux/macOS: cp .env.example .env
-                            # then edit .env: PHONE=<IP:port from Wireless debugging>, TZ=<time zone>
-docker compose build        # again after updating the code
-docker compose run --rm app pair <pairing IP:port> <code>    # once: the phone trusts the container
+```bash
+uv run feed_autoplay.py --play all --2x                      # with keys: h help · s stats · q quit
 ```
 
-With Podman, use `podman compose` instead of `docker compose`. Details — background runs, port
-changes, mirroring alongside, troubleshooting: **[CONTAINER.md](CONTAINER.md)**.
+**In the background** (keeps running after the terminal is closed):
+```bash
+mkdir -p runs
+nohup uv run feed_autoplay.py --play all --2x < /dev/null >> runs/run.log 2>&1 &
+tail -f runs/run.log                                          # follow it
+touch runs/STOP                                               # stop it (or: kill <pid>)
+```
 
-### Mirroring the phone (optional)
-
-[scrcpy](https://github.com/Genymobile/scrcpy) shows the phone on the computer: Linux
-`apt install scrcpy` or `snap install scrcpy`, macOS `brew install scrcpy`, Windows: the zip from
-its releases page. The tools don't need it.
+Stopping always prints the final statistics. All options: `uv run feed_autoplay.py --help`.
+**Update:** `git pull` — uv picks up new versions by itself on the next run.
 
 ---
 
-## feed_autoplay
+## B. Windows, with uv
+
+**You need:** an Android phone with Instagram logged in, a Windows computer, and a USB cable or the
+same Wi-Fi network. [uv](https://docs.astral.sh/uv/) sets up Python, the packages and adb by
+itself on the first run (about a minute) — nothing else to install, except the phone's USB driver
+for USB.
+
+### 1. Prepare the phone
+
+1. Settings → About phone → tap **Build number** 7 times (enables Developer options).
+2. Developer options:
+   - **USB debugging** on (for USB), and/or **Wireless debugging** on (for Wi-Fi; phone and
+     computer on the same network);
+   - **Stay awake** on (screen stays on while charging) — recommended for long runs.
+3. Keep the phone **unlocked** with Instagram available. If it locks, the tools wait until you
+   unlock it (they never try to unlock it themselves).
+4. On first connection over USB, accept the "Allow USB debugging?" prompt on the phone.
+
+### 2. Install (once)
+
+In a terminal (Windows Terminal / PowerShell):
+```powershell
+winget install --id astral-sh.uv                             # installs uv; then open a new terminal
+git clone <repository URL> android-instagram-tools          # or download the zip and unzip it
+cd android-instagram-tools
+```
+**For USB:** also install your phone maker's USB driver (Samsung: "Samsung Android USB Driver for
+Windows").
+
+### 3. Connect the phone
+
+- **USB:** plug it in — nothing else to do.
+- **Wi-Fi:** pair once, then connect (IP & port from the phone's Wireless debugging screen):
+  ```powershell
+  uv run tools/adb.py pair <pairing ip:port> <code>   # "Pair device with pairing code"
+  uv run tools/adb.py connect <ip:port>
+  uv run tools/adb.py devices                          # check: the phone shows as "device"
+  ```
+
+### 4. Run
+
+**Double-click `run.bat`** — runs with the default settings. With options, from the terminal:
+```powershell
+.\run.bat --play all --2x                                     # with keys: h help · s stats · q quit
+```
+
+**In the background** (a minimized window):
+```powershell
+start "" /min run.bat --play all --2x                        # start it
+.\stop.bat                                                    # stop it
+```
+
+Stopping always prints the final statistics (the window stays open to read them). All options:
+`.\run.bat --help`. **Update:** `git pull` (or download the zip again).
+
+---
+
+## C. Any system, in a container (Docker or Podman)
+
+**You need:** an Android phone with Instagram logged in, **Docker Desktop** or **Podman Desktop**
+(on Windows both set up WSL2 by themselves), and the phone and computer on the **same Wi-Fi
+network**. No Python or adb on the computer. Works the same on Windows, Linux and macOS.
+
+### 1. Prepare the phone
+
+1. Settings → About phone → tap **Build number** 7 times (enables Developer options).
+2. Developer options:
+   - **USB debugging** on (for USB), and/or **Wireless debugging** on (for Wi-Fi; phone and
+     computer on the same network);
+   - **Stay awake** on (screen stays on while charging) — recommended for long runs.
+3. Keep the phone **unlocked** with Instagram available. If it locks, the tools wait until you
+   unlock it (they never try to unlock it themselves).
+4. On first connection over USB, accept the "Allow USB debugging?" prompt on the phone.
+
+The container reaches the phone over **Wireless debugging**: note the **IP address & Port** shown
+on that screen.
+
+### 2. Install (once)
+
+In a terminal, after installing Docker Desktop or Podman Desktop:
+```powershell
+git clone <repository URL> android-instagram-tools          # or download the zip and unzip it
+cd android-instagram-tools
+copy .env.example .env                                       # Linux/macOS: cp .env.example .env
+```
+Edit `.env`: `PHONE=<IP:port from Wireless debugging>` and `TZ=<your time zone>` (e.g.
+`Europe/Berlin`). Then build:
+```powershell
+docker compose build
+```
+
+### 3. Connect the phone (once)
+
+On the phone, Wireless debugging → "Pair device with pairing code" (it shows *another* IP:port
+and a code), then:
+```powershell
+docker compose run --rm app pair <pairing IP:port> <code>
+```
+
+### 4. Run
+
+```powershell
+docker compose run --rm app --play all --2x                  # with keys: h help · s stats · q quit
+```
+
+**In the background:**
+```powershell
+docker compose up -d                                          # start it (settings: "command:" in compose.yaml)
+docker compose logs -f                                        # follow it
+docker compose stop                                           # stop it
+```
+
+Stopping always prints the final statistics. All options: `docker compose run --rm app --help`.
+With Podman, write `podman compose` instead of `docker compose`. **Update:** `git pull`, then
+`docker compose build`. When the phone restarts, its Wi-Fi port changes: put the new one in
+`.env`. More (saving the output, mirroring alongside, troubleshooting):
+**[CONTAINER.md](CONTAINER.md)**.
+
+---
+
+## feed_autoplay reference
 
 Plays the videos of your **Instagram home timeline**, one after another, without you touching the
 phone — so a mirrored phone (e.g. scrcpy on a second screen) is always playing something.
 Optionally at **2x**, and it can **like**, **repost**, **copy the link of** and/or **save** each
-video it watched to the end.
-
-### Run it
-
-| | Natively (2a) | In the container (2b) |
-|---|---|---|
-| **with keys** | `.venv/bin/python feed_autoplay.py --play all --2x` | `docker compose run --rm app --play all --2x` |
-| **in the background** | `mkdir -p runs`<br>`nohup .venv/bin/python -u feed_autoplay.py --play all --2x < /dev/null >> runs/run.log 2>&1 &` | `docker compose up -d` (settings: `command:` in `compose.yaml`) |
-| **follow the output** | `tail -f runs/run.log` | `docker compose logs -f` |
-| **stop** | `q` — or `kill <pid>` in the background | `q` — or `docker compose stop` |
-| **all options** | `.venv/bin/python feed_autoplay.py --help` | `docker compose run --rm app --help` |
-
-Stopping always prints the final statistics. Keys work only in the "with keys" rows (a
-terminal is needed).
+video it watched to the end. The same options and keys apply in A, B and C.
 
 ### Options
 
@@ -121,7 +235,7 @@ terminal is needed).
 "followed" = only for accounts you follow. Actions happen only for videos watched to the end, in
 the order of the buttons on screen (like → repost → share → save), and never twice: a post
 already liked/reposted/saved is left alone. Example:
-`feed_autoplay.py --play all --2x --like all --repost followed`
+`--play all --2x --like all --repost followed`
 
 ### Keys
 
@@ -133,15 +247,15 @@ already liked/reposted/saved is left alone. Example:
 | **l** | like mode | **s** | statistics |
 | **h** / **?** | help | **q** | quit |
 
+Keys work when the tool runs in a terminal window, not in the background.
+
 ### What it shows
 
 At start: the phone, the Instagram version and the settings. While running: one line per video
 and action (`▶` opened, `⏩` 2x, `♥` liked, `🔁` reposted, `🔗` link, `🔖` saved). Every 20
 videos (and on **s** / when stopping) a statistics block, including the **pace** — how many
-videos an hour to expect.
-
-Files go to `runs/`: copied links (`shared-links.txt`) and diagnostics of videos that hit the
-time limit (`maxwatch-*.npz`).
+videos an hour to expect. Files go to `runs/`: copied links (`shared-links.txt`) and diagnostics
+of videos that hit the time limit (`maxwatch-*.npz`).
 
 ### Good to know
 
@@ -152,10 +266,12 @@ time limit (`maxwatch-*.npz`).
   English. Another phone, screen size, Instagram version or language may need adjustments — it
   warns at startup when the Instagram version is one it wasn't tested with.
 - **Wi-Fi debugging:** the phone's port changes when wireless debugging is switched on again or
-  the phone restarts; reconnect with the new one (container: update `PHONE` in `.env`). USB is
-  the more stable choice for long runs (native only).
+  the phone restarts; reconnect with the new one.
 - The beginning of each video (~10 s) is usually missed: Instagram starts it in the feed before
   the tool opens it.
+- **Mirroring (optional):** [scrcpy](https://github.com/Genymobile/scrcpy) shows the phone on
+  the computer — Linux `apt install scrcpy` or `snap install scrcpy`, macOS `brew install scrcpy`,
+  Windows: the zip from its releases page. The tools don't need it.
 
 ---
 

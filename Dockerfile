@@ -13,7 +13,7 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends tzdata \
  && rm -rf /var/lib/apt/lists/*
 
-# the versions the app was tested with (DEVELOPMENT.md 2)
+# the versions the app was tested with (DEVELOPMENT.md 2) -- keep in sync with pyproject.toml
 RUN pip install uiautomator2==3.7.0 adbutils==2.12.0 numpy==2.2.6 pillow==12.3.0
 
 # One adb for everything: the app uses the adb bundled with adbutils (EndWatcher), so the

@@ -49,8 +49,8 @@ its link** and/or **save** it (in that order — the buttons' order on screen) �
 
 ```bash
 cd ~/android-instagram-tools
-.venv/bin/python feed_autoplay.py                          # defaults: --play followed --like followed, 1x
-.venv/bin/python feed_autoplay.py --2x --play all --like none   # everything at 2x, no likes
+uv run feed_autoplay.py                          # defaults: --play followed --like followed, 1x
+uv run feed_autoplay.py --2x --play all --like none   # everything at 2x, no likes
 ```
 
 Options are grouped the same way in `--help` (argparse argument groups). Every setting lists
@@ -108,18 +108,36 @@ from the adb serial's form. On an Instagram version not in `TESTED_INSTAGRAM` th
 line adds "⚠ untested version" — selectors, texts and icon masks (4.7) may need re-checking.
 `keys` says "off" when stdin isn't a terminal (background runs).
 
-Unattended runs (keys don't work there — no terminal; stop with `kill <pid>`: SIGTERM is handled
-like Ctrl-C, so the final statistics are printed):
+Unattended runs (keys don't work there — no terminal). Stop with `kill <pid>` (SIGTERM is handled
+like Ctrl-C), or by creating `runs/STOP` (any system; `stop.bat` on Windows) — either way the
+final statistics are printed:
 
 ```bash
-nohup .venv/bin/python -u feed_autoplay.py --play all --2x --like all < /dev/null >> runs/longrun-<date>.log 2>&1 &
+nohup uv run feed_autoplay.py --play all --2x --like all < /dev/null >> runs/longrun-<date>.log 2>&1 &
 ```
 
-Setup: `python3 -m venv .venv && .venv/bin/pip install uiautomator2 numpy`. A system `adb`
-is **not** required (the one bundled with the `adbutils` package is used). USB debugging or
-Wi-Fi debugging must be enabled on the phone; the screen must be unlocked.
+**Setup — uv** (native on Linux, macOS and Windows). `pyproject.toml` declares the project and
+pins the tested versions (uiautomator2 3.7.0, adbutils 2.12.0, numpy 2.2.6, Pillow 12.3.0;
+`requires-python >=3.10,<3.14` — these pins have wheels up to 3.13); `uv.lock` (committed) pins
+the whole dependency tree. `uv run <script>` creates/syncs `.venv` from the lock on first use
+(about a second once the packages are cached) and fetches a matching Python if none is
+installed — no `pip`/`venv` steps. `tool.uv.package = false`: not an installable package, the
+tools are scripts. Change dependencies with `uv add` / `uv lock` (and mirror the pins in the
+`Dockerfile`, which installs with pip). A system `adb` is **not** required: the one bundled with
+`adbutils` is used, and `tools/adb.py` exposes it (`uv run tools/adb.py pair|connect|devices`).
+USB debugging or Wi-Fi debugging must be enabled on the phone; the screen must be unlocked.
 
-**In a container (Docker or Podman — the way to run it on Windows):** see `CONTAINER.md`.
+**Windows (native):** `run.bat` (= `uv run feed_autoplay.py %*`, checks that uv is installed,
+`chcp 65001`, keeps the window open at the end) and `stop.bat` (creates `runs\STOP`); both are
+kept with CRLF line endings by `.gitattributes`. Code differences, all behind `WINDOWS = os.name ==
+"nt"`: keys via `msvcrt` instead of termios/select (4.10); Ctrl+Break handled like Ctrl-C;
+stdout/stderr reconfigured to UTF-8 (all systems) so the symbols/emoji can't crash an old console
+or a redirected file. Windows has no SIGTERM for console apps (`taskkill` without `/F` doesn't
+reach them, `/F` loses the statistics) — hence the stop file. USB works natively (vendor USB
+driver needed). ⚠ Built but **not yet run on Windows**; Linux runs the same uv workflow (tested:
+setup, a background run stopped via the stop file).
+
+**In a container (Docker or Podman — no Python on the host):** see `CONTAINER.md`.
 Image `feed-autoplay` (named in `compose.yaml`; the code is copied in, so rebuild after code
 changes). Files: `Dockerfile` (python:3.12-slim + the tested package versions, adbutils' adb linked as
 `adb`, `FEED_AUTOPLAY_CONTAINER=1`), `docker/entrypoint.sh` (`pair`, `adb …`, `tool <script>`,
@@ -140,7 +158,7 @@ named volume `adb-keys` for the pairing key, default `command:` for `up -d`), `.
 - `docker/podman stop` sends SIGTERM → now handled like Ctrl-C (stats printed); verified.
 - Messages that print a command (max-watch diagnosis) show the container form when
   `FEED_AUTOPLAY_CONTAINER` is set.
-- Not tried: Windows itself, Podman, `pair` from the container, likes/reposts/links/saves inside
+- Not tried: Windows itself (container or native), Podman, `pair` from the container, likes/reposts/links/saves inside
   the container (tested outside, same code).
 
 Instagram's terms forbid automated access. Playing and liking at human pace is low-key, but
@@ -154,7 +172,7 @@ Everything below was measured on this setup; coordinates and IDs may differ else
 |---|---|
 | Phone | a mid-range Samsung Galaxy, Android 11 (SDK 30), 1080×2340, buttons navigation bar |
 | Instagram | **451.0.0.53.80** — auto-updated from 450.0.0.50.77 on 2026-10-16 19:23, a few hours into development; only the first exploration (feed headers, first player dumps) ran on 450. All recordings, tuning, icon masks and long runs are on 451. The app warns at startup on any other version (`TESTED_INSTAGRAM`). |
-| PC | Ubuntu, Python 3.10, uiautomator2 3.7.0, numpy |
+| PC | Ubuntu; Python 3.10 (development, pip venv) → Python 3.13 via uv (since 2026-10-21); uiautomator2 3.7.0, adbutils 2.12.0, numpy 2.2.6, Pillow 12.3.0 |
 | Connection | USB at first, later Wi-Fi debugging |
 | Phone settings | pattern screen lock; Developer options → **Stay awake** on (since 2026-10-18, after 5.1) |
 
@@ -189,7 +207,8 @@ Until then everything lives in `feed_autoplay.py`:
 
 | Piece | Role |
 |---|---|
-| `Keys` | non-blocking key reader (cbreak terminal); inert when stdin isn't a TTY |
+| `Keys` | non-blocking key reader (termios/select on Linux/macOS, msvcrt on Windows); inert when stdin isn't a TTY |
+| `STOP_FILE` (`runs/STOP`) | checked in `Player.key()`: creating it stops the run cleanly (stats printed); cleared at startup |
 | `Player.key` | handles global keys (q, w, l, r, c, b, s, h/?) wherever it is polled; returns n/p to the caller |
 | `MODE_KEYS` / `cycle_text` | the five mode keys in one table (attribute, label, cycle, note); `followed → [all]`-style cycle text |
 | `PLAY_MODES` … `SAVE_MODES` | the mode lists — the single definition of each setting's values and their order (also used as `--help` choices) |
@@ -219,13 +238,16 @@ Until then everything lives in `feed_autoplay.py`:
 | `Player.ensure_feed` | gets back to the Home timeline from anywhere |
 | `pick_serial` | chooses the adb device (copes with duplicate Wi-Fi entries) |
 
-Supporting tools (see section 5): `tools/record_traces.py` (record test videos),
+Supporting tools (see section 5): `tools/adb.py` (the bundled adb: pair/connect/devices),
+`tools/record_traces.py` (record test videos),
 `tools/tune_fallback.py` (score detector settings), `tools/period.py` (period estimate; also
 analyses `runs/maxwatch-*.npz`), `tools/backtest_pace.py` (backtest the stats' pace estimate on
 run logs, 4.11), `tools/traces/` (13 2x recordings), `tools/traces_1x/`
 (22 1x recordings) and `tools/icon_samples/` — the data folders are **local only**
 (git-ignored, see 5). Run logs and max-watch dumps go to `runs/`. Container setup: `Dockerfile`,
-`compose.yaml`, `docker/entrypoint.sh`, `.env.example`, guide `CONTAINER.md`.
+`compose.yaml`, `docker/entrypoint.sh`, `.env.example`, guide `CONTAINER.md`. Native setup:
+`pyproject.toml` + `uv.lock` (uv), `run.bat` / `stop.bat` (Windows), `.gitattributes` (CRLF for
+`.bat`).
 
 ---
 
@@ -697,8 +719,10 @@ Any test that taps Repost must check `repost_state()` before **every** tap, incl
 
 ### 4.10 Keyboard controls
 
-`Keys` puts the terminal in cbreak mode and polls stdin with `select`, so the main loop never
-blocks. `Player.key()` is polled both while scanning the feed and while watching; it handles
+`Keys` puts the terminal in cbreak mode and polls stdin with `select` (Linux/macOS), or polls
+`msvcrt.kbhit()`/`getwch()` (Windows; the two-code arrow/function keys are ignored), so the main
+loop never blocks. `Player.key()` also checks the stop file `runs/STOP` first: if it exists it is
+removed and the run ends like `q` (works without a terminal, on every system). `Player.key()` is polled both while scanning the feed and while watching; it handles
 the global keys itself (q raises `Quit`; w / l / r / c / b cycle `args.play` / `args.like` /
 `args.repost` / `args.share_link` / `args.save` in place (one table, `MODE_KEYS`) and log the
 new mode with its cycle, e.g. `like mode: all   (none → followed → [all])`; s prints the stats;
@@ -727,7 +751,7 @@ Mode changes apply immediately: the like, repost, copy-link and save decisions a
 a video ends, so a new mode applies to the video currently playing; switching play to "followed" while a suggested
 video plays skips it at once (`watch(..., followed=...)`). Play has two modes only — a "none"
 play mode would mean playing nothing. When stdin isn't a TTY (pipes, background runs, tests) keys are simply disabled —
-needed because `termios` fails without a terminal. Pause taps the centre of the player and
+needed because `termios` (and `msvcrt`'s console reading) fail without a terminal. Pause taps the centre of the player and
 pauses the watch clock; it is disabled for in-feed videos (a tap there toggles sound).
 
 
@@ -776,7 +800,7 @@ and tested on the 4th: 59–100 % (59 % for the 10.7 h run, the least steady pac
 #### How it was measured — `tools/backtest_pace.py`
 
 ```bash
-.venv/bin/python tools/backtest_pace.py runs/*.log
+uv run tools/backtest_pace.py runs/*.log
 ```
 
 Rebuilds every video's start time from the `▶` lines of run logs; at a checkpoint every 10
@@ -848,7 +872,7 @@ skipped and such gaps are left out of the cycles, as the app does. It imports th
 
 **Live runs.** Run the script for a few minutes with `timeout -s INT 300 … < /dev/null > log`
 and read the log. To test keys without a person at the keyboard, feed them through a
-pseudo-terminal: `(sleep 15; printf h; sleep 15; printf w; …; printf q) | timeout 220 script -qfc ".venv/bin/python -u feed_autoplay.py" /dev/null`. Useful derived numbers:
+pseudo-terminal: `(sleep 15; printf h; sleep 15; printf w; …; printf q) | timeout 220 script -qfc "uv run feed_autoplay.py" /dev/null`. Useful derived numbers:
 - *end detection correct?* with the log's duration D at 2x, one pass takes D/2 seconds; the
   first end should come at `D/2 − head_start/2`.
 - *head start into the video* = `(D/2 − time_to_first_end) × 2`.
@@ -858,8 +882,8 @@ pseudo-terminal: `(sleep 15; printf h; sleep 15; printf w; …; printf q) | time
 small screenshots plus the times of the log's end lines:
 
 ```bash
-.venv/bin/python tools/record_traces.py tools/traces 10 75 --first 13      # 2x: 10 more, from r13
-.venv/bin/python tools/record_traces.py tools/traces_1x 10 150 --speed 1 --first 10   # 1x
+uv run tools/record_traces.py tools/traces 10 75 --first 13      # 2x: 10 more, from r13
+uv run tools/record_traces.py tools/traces_1x 10 150 --speed 1 --first 10   # 1x
 ```
 
 (~1.5 min per video at 2x, ~2.7 min at 1x, where ~2 passes are needed; the phone is busy
@@ -874,7 +898,7 @@ of 25 estimates were multiples); (2) only clear repetitions count — "contrast"
 median score over all lags) ≤ 0.45. Validated against the log on 25 traces: 24 agree within
 1 s; the one disagreement had contrast 0.96 and is excluded by the rule.
 
-**Scoring detector settings offline.** `.venv/bin/python tools/tune_fallback.py tools/traces`
+**Scoring detector settings offline.** `uv run tools/tune_fallback.py tools/traces`
 (or `tools/traces_1x`; ~10–30 min, CPU only) replays the traces through a grid of detector settings and ranks them. The
 detector can only match once playback returns to the point where the references were taken,
 at ≈ ref_start + T, so offsets are reported relative to that:
@@ -987,6 +1011,9 @@ repost"** message, and every repost tap was refused → repost refusal detection
 
 ## 6. Known limitations and ideas
 
+- Native Windows (uv, `run.bat`): built, not yet run on a Windows PC — keys via msvcrt, USB with
+  the vendor driver and `stop.bat` are untested there.
+
 - Container runs (CONTAINER.md): Wi-Fi debugging only; if the phone restarts mid-run its
   wireless-debugging port changes and the app can't reconnect on its own (new `PHONE` needed);
   untested on Windows/Podman.
@@ -1021,6 +1048,10 @@ repost"** message, and every repost tap was refused → repost refusal detection
   Instagram accounts from the feed or the owner's time zone (they were replaced on 2026-10-20,
   e.g. serial `R58N91XKQZT`, `192.168.1.23:41235`, `chef.marco`). Copy log excerpts into docs
   only after replacing real names. Run data (`runs/`, `.env`) is git-ignored.
+- **The stop file is shared:** every running instance in the folder watches `runs/STOP`. Tests
+  must not create the real one while a real run may be active — point the test at another path
+  (`feed_autoplay.STOP_FILE = Path(...)`). (A test once created it while the owner's instance was
+  running; that instance happened to predate the stop file.)
 - `pkill -f <pattern>` also matches the shell whose command line contains the pattern — use the
   bracket trick (`[l]ogcat …`); this killed a test command twice.
 

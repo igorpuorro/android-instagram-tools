@@ -21,8 +21,8 @@ used by feed_autoplay.py for that speed (keep CURRENT in sync with feed_autoplay
 
 The trace folders are local only (git-ignored): record them with tools/record_traces.py.
 
-Usage: .venv/bin/python tools/tune_fallback.py tools/traces       (2x traces)
-       .venv/bin/python tools/tune_fallback.py tools/traces_1x    (1x traces)
+Usage: uv run tools/tune_fallback.py tools/traces       (2x traces)
+       uv run tools/tune_fallback.py tools/traces_1x    (1x traces)
 Takes a few minutes (pure CPU, no phone needed).
 """
 import glob
@@ -123,7 +123,7 @@ def main():
     if len(sys.argv) < 2 or not glob.glob(sys.argv[1] + "/r*.npz"):
         sys.exit("no traces found: the recorded data isn't in the repository (DEVELOPMENT.md 5) -- "
                  "record some with tools/record_traces.py, e.g.\n"
-                 "  .venv/bin/python tools/record_traces.py tools/traces 20 75")
+                 "  uv run tools/record_traces.py tools/traces 20 75")
     traces = load(sys.argv[1])
     print("traces with ground truth:", len(traces))
 

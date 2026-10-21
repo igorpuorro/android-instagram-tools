@@ -14,8 +14,8 @@ Output: OUT/r<n>.npz with arrays
 The output folders hold screenshots of your feed and are git-ignored (DEVELOPMENT.md 5).
 
 Usage (from the project folder, phone connected, Instagram logged in):
-  .venv/bin/python tools/record_traces.py tools/traces 10 75 --first 13          # 2x
-  .venv/bin/python tools/record_traces.py tools/traces_1x 10 150 --speed 1       # 1x
+  uv run tools/record_traces.py tools/traces 10 75 --first 13          # 2x
+  uv run tools/record_traces.py tools/traces_1x 10 150 --speed 1       # 1x
 At 1x record long enough for ~2 passes of a typical video (150 s).
 Nothing gets liked; suggested videos are recorded too (--play all behaviour).
 """
