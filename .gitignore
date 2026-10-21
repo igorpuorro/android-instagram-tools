@@ -1,0 +1,57 @@
+# ----------------------------------------------------------------------------------------------
+# Personal data -- never publish
+# ----------------------------------------------------------------------------------------------
+# run logs (real account names), shared-links.txt (your copied links), max-watch dumps
+# (screenshots of videos)
+runs/
+# your phone's IP:port and time zone; the template stays in the repository
+.env
+.env.*
+!.env.example
+
+# ----------------------------------------------------------------------------------------------
+# Tuning data -- kept private (DEVELOPMENT.md 5)
+# ----------------------------------------------------------------------------------------------
+# Screenshots of a real feed (third-party videos, the owner's feed): traces = 13,449 small
+# grayscale full-screen frames of 35 videos (~210 MB), icon_samples = button crops with video
+# behind them. Only the tuning / icon-mask tools need them; the app needs just
+# assets/icon_masks.npz. Record your own with tools/record_traces.py.
+tools/traces/
+tools/traces_1x/
+tools/icon_samples/
+
+# ----------------------------------------------------------------------------------------------
+# Python
+# ----------------------------------------------------------------------------------------------
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.egg-info/
+build/
+dist/
+
+# ----------------------------------------------------------------------------------------------
+# Editors and operating systems
+# ----------------------------------------------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ----------------------------------------------------------------------------------------------
+# Local tool settings and test leftovers
+# ----------------------------------------------------------------------------------------------
+# per-user Claude Code settings (a shared .claude/settings.json may be committed)
+.claude/settings.local.json
+# scratch files from manual tests (e.g. a copied adb key for container tests)
+.test-*
+.cmp-*

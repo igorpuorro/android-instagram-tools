@@ -1,0 +1,10 @@
+# keep the build context small: only the app, assets, tools/*.py and docker/ are needed
+.venv
+runs
+tools/traces
+tools/traces_1x
+tools/icon_samples
+**/__pycache__
+**/*.pyc
+.env
+.git

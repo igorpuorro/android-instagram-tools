@@ -1,0 +1,20 @@
+# feed_autoplay in a container -- works with "docker compose" and "podman compose".
+# See CONTAINER.md. Settings for PHONE and TZ come from .env (copy .env.example).
+services:
+  app:
+    build: .
+    image: feed-autoplay
+    environment:
+      PHONE: ${PHONE:-}
+      TZ: ${TZ:-UTC}
+    # keys (h, s, n, p, q, ...) need a terminal: "compose run --rm app ..." gives one by
+    # default; "compose up -d" runs without (keys off -- stop it with "compose stop")
+    volumes:
+      - ./runs:/app/runs           # logs, shared-links.txt and max-watch dumps on this PC
+      - adb-keys:/root/.android    # the adb key the phone was paired with
+    # default settings for "compose up"; "compose run --rm app <options>" replaces them
+    command: ["--play", "all", "--2x", "--like", "all"]
+    restart: "no"
+
+volumes:
+  adb-keys:
