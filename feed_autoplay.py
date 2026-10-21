@@ -254,6 +254,7 @@ class Player:
         self.started = time.time()
         self.waited = dict(locked=0.0, reconnect=0.0, paused=0.0)  # idle, excluded from "active" rate
         self.pauses = []  # (start, end) of each pause: end-of-video log lines in them are ignored
+        self.pause_start = None  # start of the pause in progress (stats shown while paused)
         self.context = None  # "player" / "feed-video" while watch() runs: what a pause leaves
         self.need_feed = True  # (re)start from the Home feed on the next loop turn
         self.cycles = []        # recent active cycle times (s): start of one played video to the next
@@ -276,11 +277,17 @@ class Player:
     PACE_MIN, PACE_ROUGH = 5, 20  # no estimate below 5 cycles; marked rough below 20
     PACE_KEEP = 300         # older cycles weigh < 0.1 %
 
+    def idle(self):
+        """Seconds spent waiting so far (lock screen, reconnect back-off, pauses -- including
+        one in progress), left out of the "active" time and the pace."""
+        ongoing = time.time() - self.pause_start if self.pause_start else 0.0
+        return sum(self.waited.values()) + ongoing
+
     def mark_played(self):
         """Count a played video and record the cycle since the previous one, minus the time
         spent waiting (lock screen, reconnect back-off, pauses) in between."""
         self.stats["played"] += 1
-        now, idle = time.time(), sum(self.waited.values())
+        now, idle = time.time(), self.idle()
         if self.last_start is not None:
             t0, idle0 = self.last_start
             self.cycles = (self.cycles + [max(now - t0 - (idle - idle0), 1.0)])[-self.PACE_KEEP:]
@@ -303,7 +310,8 @@ class Player:
         comparison, per active hour too when time was spent waiting (unlock, reconnect, pause)."""
         s = self.stats
         elapsed = max(time.time() - self.started, 1)
-        idle = sum(self.waited.values())
+        idle = self.idle()
+        paused = self.waited["paused"] + (time.time() - self.pause_start if self.pause_start else 0.0)
         active = max(elapsed - idle, 1)
         whole = f"whole run {s['played'] / (elapsed / 3600):.1f}/h"
         if idle >= 60:
@@ -327,7 +335,7 @@ class Player:
         log(f"   ends     log {s['end_log']} · frames {s['end_frames']} · static {s['end_static']} · "
             f"max-time {s['end_max']}")
         log(f"   waits    errors recovered {s['errors']} · locked {self.hm(self.waited['locked'])} · "
-            f"reconnecting {self.hm(self.waited['reconnect'])} · paused {self.hm(self.waited['paused'])}")
+            f"reconnecting {self.hm(self.waited['reconnect'])} · paused {self.hm(paused)}")
 
     def locked(self):
         """Is the lock screen showing? ("screen on" alone can't tell: it is also on while
@@ -348,14 +356,16 @@ class Player:
         log("phone is locked: waiting for it to be unlocked (q quits)")
         lock_start = time.time()
         waited = 0
-        while self.locked():
-            for _ in range(15):
-                self.key()  # q still quits
-                time.sleep(1)
-            waited += 15
-            if waited % 600 == 0:
-                log(f"  still locked after {waited // 60} min")
-        self.waited["locked"] += time.time() - lock_start
+        try:
+            while self.locked():
+                for _ in range(15):
+                    self.key()  # q still quits; p pauses (resuming leaves this wait: Resumed)
+                    time.sleep(1)
+                waited += 15
+                if waited % 600 == 0:
+                    log(f"  still locked after {waited // 60} min")
+        finally:  # also when left by quit or a pause; a pause in it counts as paused, not locked
+            self.waited["locked"] += time.time() - lock_start - self.paused_since(lock_start)
         log("phone unlocked: carrying on")
 
     # ---- helpers -------------------------------------------------------
@@ -409,7 +419,7 @@ class Player:
         video is still open and paused at the same frame (nobody touched it); otherwise the
         current video is dropped (no like/repost/link/save) and Resumed is raised, which takes
         the run back to the Home feed."""
-        t0 = time.time()
+        t0 = self.pause_start = time.time()
         ref = None
         if self.context == "player":
             try:
@@ -428,6 +438,7 @@ class Player:
                 time.sleep(0.2)
         finally:  # also when quitting while paused: the final statistics count the pause
             t1 = time.time()
+            self.pause_start = None
             self.pauses.append((t0, t1))
             self.waited["paused"] += t1 - t0
         try:

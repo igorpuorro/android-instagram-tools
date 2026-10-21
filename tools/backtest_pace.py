@@ -3,8 +3,8 @@
 
 At a checkpoint every 10 videos, compares the estimate from the cycle times so far with the
 number of videos actually played in the following hour. Hours containing a long wait (lock
-screen, outage: a gap > 15 min) are skipped; such gaps are also left out of the cycle times,
-as the app does.
+screen, outage: a gap > 15 min) or a pause (key p / runs/PAUSE) are skipped; such gaps and the
+paused time are also left out of the cycle times, as the app does.
 
 Usage: uv run tools/backtest_pace.py runs/*.log
 """
@@ -22,19 +22,32 @@ GAP = 900  # s: longer cycles are waits, not videos
 
 
 def starts(path):
-    """Datetimes of the '▶' (video opened) lines; the date only matters across midnight."""
-    out, day, prev = [], datetime(2000, 1, 1), None
+    """(datetimes of the '▶' (video opened) lines, [(pause start, pause end)]); the date only
+    matters across midnight. "▶ resumed …" lines end a pause, they don't open a video."""
+    out, pauses, day, prev, paused = [], [], datetime(2000, 1, 1), None, None
     for line in open(path, encoding="utf-8", errors="replace"):
-        m = re.match(r"(\d\d:\d\d:\d\d) ▶ ", line)
+        m = re.match(r"(\d\d:\d\d:\d\d) (▶ resumed|⏸ paused|▶ )", line)
         if not m:
             continue
         t = datetime.combine(day.date(), datetime.strptime(m.group(1), "%H:%M:%S").time())
         if prev and t < prev:
             day += timedelta(days=1)
             t += timedelta(days=1)
-        out.append(t)
         prev = t
-    return out
+        if m.group(2) == "⏸ paused":
+            paused = t
+        elif m.group(2) == "▶ resumed":
+            if paused:
+                pauses.append((paused, t))
+            paused = None
+        else:
+            out.append(t)
+    return out, pauses
+
+
+def paused_between(pauses, a, b):
+    """Seconds paused between datetimes a and b."""
+    return sum(max(0.0, (min(b, p1) - max(a, p0)).total_seconds()) for p0, p1 in pauses)
 
 
 def weighted(c):
@@ -56,8 +69,8 @@ def main():
     inside = total = 0
     lo_f, hi_f = ia.Player.PACE_RANGE
     for path in sys.argv[1:]:
-        S = starts(path)
-        C = [(b - a).total_seconds() for a, b in zip(S, S[1:])]
+        S, P = starts(path)
+        C = [(b - a).total_seconds() - paused_between(P, a, b) for a, b in zip(S, S[1:])]
         for k in range(20, len(S), 10):
             c = [x for x in C[:k] if x <= GAP]
             end = S[k] + timedelta(hours=1)
@@ -65,7 +78,7 @@ def main():
                 continue
             nxt = [t for t in S[k:] if t < end]
             gaps = [(b - a).total_seconds() for a, b in zip(nxt, nxt[1:])]
-            if gaps and max(gaps) > GAP:
+            if gaps and max(gaps) > GAP or paused_between(P, S[k], end) > 0:
                 continue
             for name, f in ESTIMATORS.items():
                 err[name].append(f(c) - len(nxt))

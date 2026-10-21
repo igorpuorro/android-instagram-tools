@@ -204,7 +204,7 @@ android-instagram-tools/
 ├── android_instagram/            shared (device, logwatch, keys, stats, ui, …)
 │   └── feed_autoplay/            this tool → python -m android_instagram.feed_autoplay
 ├── tools/                        dev tools, per tool
-├── tests/                        checks without a phone (test_ui_text.py, 4.12)
+├── tests/                        checks without a phone (test_ui_text.py 4.12, test_pause_stats.py 4.10)
 └── Dockerfile, compose.yaml, README.md, DEVELOPMENT.md, CONTAINER.md
 ```
 
@@ -798,7 +798,10 @@ in-feed video, lock-screen wait):
 4. Each pause is stored (`self.pauses`): end-of-video log lines during a pause (+2 s slack) are
    ignored, watch time excludes it (`paused_since`), and the stats count it as waiting
    (`waits … paused`), out of the pace — like locked time. Recorded in a `finally`, so a stop
-   while paused counts it too.
+   while paused counts it too; a pause in progress is included when **s** is pressed during it,
+   and a pause during the unlock wait is not counted as locked (both fixed after the first
+   version, `tests/test_pause_stats.py`). `tools/backtest_pace.py` reads the pause lines of a
+   log the same way (a "▶ resumed" line is not a video start; hours with a pause are skipped).
 
 The 2x lock survives a pause in place (checked by holding the edge after resuming: "…normal
 speed" hint). Tested live 2026-10-21 (`--2x`, likes and links off; pseudo-terminal for keys,
@@ -832,14 +835,17 @@ Logged every 20 played videos, on quit and on key **s** (`Player.report`):
             whole run 28.4/h (60.0/h active)
    actions  liked 302 · reposted 0 (refused 0) · links copied 0 · saved 0
    ends     log 231 · frames 67 · static 1 · max-time 3
-   waits    errors recovered 17 · locked 5h 14m · reconnecting 24m
+   waits    errors recovered 17 · locked 5h 14m · reconnecting 24m · paused 0m
 ```
 
-- **header:** elapsed time; "active" = elapsed minus waits, shown once ≥ 1 min was spent waiting.
+- **header:** elapsed time; "active" = elapsed minus waits (lock screen, reconnect, pauses),
+  shown once ≥ 1 min was spent waiting.
 - **pace:** the estimate below. **whole run:** the plain average (videos ÷ elapsed hours), and per
   *active* hour when there were waits — e.g. 28/h overall but 60/h while actually playing.
-- **waits:** time at the lock screen (`wake`) and in the error back-off sleeps (`run`); the
-  latter undercounts a long outage slightly (only the sleeps are timed).
+- **waits:** time at the lock screen (`wake`), in the error back-off sleeps (`run`; undercounts
+  a long outage slightly, only the sleeps are timed) and paused (`pause`, 4.10). `Player.idle()`
+  sums them, including a pause in progress (key **s** while paused). A pause during the unlock
+  wait counts as paused, not locked. Checked by `tests/test_pause_stats.py` (simulated clock).
 - Searching a log for "stats after" finds the blocks (one header line each).
 
 #### Current implementation (v2, weighted mean)
@@ -848,7 +854,7 @@ Logged every 20 played videos, on quit and on key **s** (`Player.report`):
 
 - **Data — cycle times.** `Player.mark_played()` runs at the start of every *played* video
   (not for skipped suggestions): cycle = time since the previous played video's start, minus
-  the waiting time (`waited`) accrued in between. The last `PACE_KEEP` = 300 cycles are kept.
+  the waiting time (`Player.idle()`: lock screen, reconnect, pauses) accrued in between. The last `PACE_KEEP` = 300 cycles are kept.
 - **Estimate.** `Player.pace()`: pace = 3600 ÷ the **time-weighted mean** of the cycles, the
   weight halving every `PACE_HALF_LIFE` = 30 videos back (exponentially weighted mean).
 - **Range.** "likely" = pace × `PACE_RANGE` = (0.75, 1.25), calibrated empirically (below).
@@ -1011,7 +1017,8 @@ thousands separator, extend `post_id` if the time label has another shape, add c
 ## 5. How things were tested (and how to re-test)
 
 **Without a phone.** `uv run tests/test_ui_text.py` checks all language-dependent text
-matching, English and pt-BR (4.12).
+matching, English and pt-BR (4.12); `uv run tests/test_pause_stats.py` checks the pause and
+statistics timing on a simulated clock (4.10, 4.11).
 
 **Live runs.** Run the script for a few minutes with `timeout -s INT 300 … < /dev/null > log`
 and read the log. To test keys without a person at the keyboard, feed them through a
