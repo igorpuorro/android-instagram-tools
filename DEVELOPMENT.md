@@ -82,7 +82,7 @@ Keys while running (only when started from a terminal):
 | Key | Action |
 |---|---|
 | **n** | next video (skipped videos are never liked, reposted, link-copied or saved) |
-| **p** | pause / resume (full-screen player only) |
+| **p** | pause: hand the phone over (the tool stops touching it) / resume (4.10) |
 | **w** | cycle play mode: followed → all |
 | **l** | cycle like mode: none → followed → all |
 | **r** | cycle repost mode: none → followed → all |
@@ -111,7 +111,8 @@ line adds "⚠ untested version" — selectors, texts and icon masks (4.7) may n
 
 Unattended runs (keys don't work there — no terminal). Stop with `kill <pid>` (SIGTERM is handled
 like Ctrl-C), or by creating `runs/STOP` (any system; `stop.bat` on Windows) — either way the
-final statistics are printed:
+final statistics are printed. Pause by creating `runs/PAUSE`, resume by deleting it (`pause.bat`
+toggles it on Windows; 4.10):
 
 ```bash
 nohup uv run feed_autoplay.py --play all --2x --like all < /dev/null >> runs/longrun-<date>.log 2>&1 &
@@ -129,7 +130,8 @@ tools are scripts. Change dependencies with `uv add` / `uv lock` (and mirror the
 USB debugging or Wi-Fi debugging must be enabled on the phone; the screen must be unlocked.
 
 **Windows (native):** `run.bat` (= `uv run feed_autoplay.py %*`, checks that uv is installed,
-`chcp 65001`, keeps the window open at the end) and `stop.bat` (creates `runs\STOP`); both are
+`chcp 65001`, keeps the window open at the end), `stop.bat` (creates `runs\STOP`) and
+`pause.bat` (creates / deletes `runs\PAUSE`: pause / resume); all are
 kept with CRLF line endings by `.gitattributes`. Code differences, all behind `WINDOWS = os.name ==
 "nt"`: keys via `msvcrt` instead of termios/select (4.10); Ctrl+Break handled like Ctrl-C;
 stdout/stderr reconfigured to UTF-8 (all systems) so the symbols/emoji can't crash an old console
@@ -212,7 +214,9 @@ Until then everything lives in `feed_autoplay.py`:
 | Piece | Role |
 |---|---|
 | `Keys` | non-blocking key reader (termios/select on Linux/macOS, msvcrt on Windows); inert when stdin isn't a TTY |
-| `STOP_FILE` (`runs/STOP`) | checked in `Player.key()`: creating it stops the run cleanly (stats printed); cleared at startup |
+| `STOP_FILE` (`runs/STOP`) | checked in `Player.poll()`: creating it stops the run cleanly (stats printed); cleared at startup |
+| `PAUSE_FILE` (`runs/PAUSE`) | checked in `Player.key()`: while it exists the run is paused (`Player.pause`); cleared at startup |
+| `Player.pause` / `Resumed` | the hand-the-phone-over pause (4.10); `Resumed` sends the run back to the Home feed |
 | `Player.key` | handles global keys (q, w, l, r, c, b, s, h/?) wherever it is polled; returns n/p to the caller |
 | `MODE_KEYS` / `cycle_text` | the five mode keys in one table (attribute, label, cycle, note); `followed → [all]`-style cycle text |
 | `PLAY_MODES` … `SAVE_MODES` | the mode lists — the single definition of each setting's values and their order (also used as `--help` choices) |
@@ -223,7 +227,7 @@ Until then everything lives in `feed_autoplay.py`:
 | `Player.post_id` / `is_seen` / `remember` | short memory of handled posts, robust to the "N minutes ago" label moving on |
 | `Player.open_next_video` | scroll/pull/tap until a video is playing; returns `("player"\|"feed", desc, followed)` |
 | `Player.speed_2x` | edge press-and-hold + slide down to lock 2x |
-| `Player.watch` | waits for the end (log signal or frame comparison), skip/pause keys, caps |
+| `Player.watch` | waits for the end (log signal or frame comparison; log lines from pauses ignored), skip key, caps |
 | `Player.player_author_followed` | follow check inside the full-screen player |
 | `Player.like_in_player` / `like_in_feed` / `tap_like` | verified like via the like button |
 | `Player.is_liked` / `heart_looks_liked` / `exact_count` | "already liked?" from flag, label and the heart's outline; count-drop safety net |
@@ -250,7 +254,7 @@ run logs, 4.11), `tools/traces/` (13 2x recordings), `tools/traces_1x/`
 (22 1x recordings) and `tools/icon_samples/` — the data folders are **local only**
 (git-ignored, see 5). Run logs and max-watch dumps go to `runs/`. Container setup: `Dockerfile`,
 `compose.yaml`, `docker/entrypoint.sh`, `.env.example`, guide `CONTAINER.md`. Native setup:
-`pyproject.toml` + `uv.lock` (uv), `run.bat` / `stop.bat` (Windows), `.gitattributes` (CRLF for
+`pyproject.toml` + `uv.lock` (uv), `run.bat` / `stop.bat` / `pause.bat` (Windows), `.gitattributes` (CRLF for
 `.bat`).
 
 ---
@@ -317,7 +321,7 @@ first, then tap 0.15·h below the header; if the player doesn't open within 5 s,
 at the centre of the video (`media_box`). Only then fall back to the in-feed path.
 
 **In-feed path (`play_in_feed`).** For a video that still doesn't open, the script watches it
-where it is (no 2x, no pause key) and likes via the feed's `row_feed_button_like`.
+where it is (no 2x; a pause leaves it, see 4.10) and likes via the feed's `row_feed_button_like`.
 ⚠ This path is barely tested: most "failures" turned out to be the tap-position problem above.
 In its only real run it stopped after 41 s with a false "video closed" (a single missed
 lookup); `still_open` now needs 4 misses in a row. Not re-verified since.
@@ -725,14 +729,15 @@ Any test that taps Repost must check `repost_state()` before **every** tap, incl
 
 `Keys` puts the terminal in cbreak mode and polls stdin with `select` (Linux/macOS), or polls
 `msvcrt.kbhit()`/`getwch()` (Windows; the two-code arrow/function keys are ignored), so the main
-loop never blocks. `Player.key()` also checks the stop file `runs/STOP` first: if it exists it is
-removed and the run ends like `q` (works without a terminal, on every system). `Player.key()` is polled both while scanning the feed and while watching; it handles
+loop never blocks. `Player.poll()` also checks the stop file `runs/STOP` first: if it exists it is
+removed and the run ends like `q` (works without a terminal, on every system); `Player.key()`
+adds the pause (key p or `runs/PAUSE`, below). `Player.key()` is polled both while scanning the feed and while watching; it handles
 the global keys itself (q raises `Quit`; w / l / r / c / b cycle `args.play` / `args.like` /
 `args.repost` / `args.share_link` / `args.save` in place (one table, `MODE_KEYS`) and log the
 new mode with its cycle, e.g. `like mode: all   (none → followed → [all])`; x toggles
 `args.speed2x` (2x on/off, `SPEED_MODES`); s prints the stats;
-h/? prints the help block) and
-returns only n and p to the caller.
+h/? prints the help block; p pauses) and
+returns only n to the caller.
 
 The help (`Player.help`) uses the same block style as the statistics, grouped like `--help`,
 with the current mode marked inside each key's cycle:
@@ -740,7 +745,7 @@ with the current mode marked inside each key's cycle:
 ```
 ── keys ────────────────────────────────────────────────────────
    playback   n  next video (a skipped video gets no like/repost/link/save)
-              p  pause / resume (full-screen player only)
+              p  pause: the phone is yours until p again (also runs/PAUSE)
               x  2x speed         off → [on]                from the next video
               w  play mode        followed → [all]
    actions    l  like mode        none → followed → [all]
@@ -762,8 +767,56 @@ Mode changes apply immediately: the like, repost, copy-link and save decisions a
 a video ends, so a new mode applies to the video currently playing; switching play to "followed" while a suggested
 video plays skips it at once (`watch(..., followed=...)`). Play has two modes only — a "none"
 play mode would mean playing nothing. When stdin isn't a TTY (pipes, background runs, tests) keys are simply disabled —
-needed because `termios` (and `msvcrt`'s console reading) fail without a terminal. Pause taps the centre of the player and
-pauses the watch clock; it is disabled for in-feed videos (a tap there toggles sound).
+needed because `termios` (and `msvcrt`'s console reading) fail without a terminal.
+
+#### Pause: handing the phone over
+
+Meant for "I want to use the phone for a while". Until 2026-10-21 `p` only toggled play/pause in
+the full-screen player, and that wasn't safe for using the phone (analysis of that date):
+- it didn't work while the feed was being scanned or in-feed videos played;
+- resume tapped the centre of *whatever* was on screen (another app, another reel);
+- after resume the app saw "video closed unexpectedly" and its recovery pulled the phone back
+  to Instagram's Home feed;
+- the end-of-video log was still read while paused, and any reel *the user* watched writes
+  those lines → the app could "finish" the video and **like/repost/save the reel on screen**;
+- paused time counted in the pace; background runs had no pause at all.
+
+Now (`Player.pause`, entered from `Player.key()`, which is polled everywhere: feed scan, player,
+in-feed video, lock-screen wait):
+1. **Pause** (key p, or the file `runs/PAUSE` appears): in the full-screen player one tap
+   pauses the video and, 1 s later, the author and a frame of the paused video are recorded.
+   In the feed or an in-feed video nothing is tapped (a tap there toggles sound).
+2. **While paused** the app doesn't touch the phone (no taps, swipes, screenshots or dumps);
+   it only polls keys / files — q, the stop file, s, h and the mode keys still work.
+3. **Resume** (p again, or the file deleted when the pause came from the file): the video
+   continues in place (one tap) **only if** the screen is on and unlocked, Instagram is in
+   front, the full-screen player shows the same author **and** the frame still matches
+   (`PAUSE_SAME_FRAME`, mean difference < 4 grey levels) — i.e. nobody touched it. Otherwise
+   the video is left (counted as skipped, no actions) and `Resumed` is raised: `run()` sets
+   `need_feed`, so the next loop turn goes to the Home feed (`ensure_feed`, which waits for an
+   unlock without gesturing if the phone got locked).
+4. Each pause is stored (`self.pauses`): end-of-video log lines during a pause (+2 s slack) are
+   ignored, watch time excludes it (`paused_since`), and the stats count it as waiting
+   (`waits … paused`), out of the pace — like locked time. Recorded in a `finally`, so a stop
+   while paused counts it too.
+
+The 2x lock survives a pause in place (checked by holding the edge after resuming: "…normal
+speed" hint). Tested live 2026-10-21 (`--2x`, likes and links off; pseudo-terminal for keys,
+plus a background run for the file):
+
+| Scenario | Result |
+|---|---|
+| p in the player, phone untouched for 23 s, p | resumed in place; end detected at 29 s (pause excluded) |
+| p in the player, Settings opened, p | "the phone was used, so this video is left"; back to the feed, next video played |
+| p in the player, swiped to other reels, let them play/loop 70 s, p | no end-of-video during the pause, no actions; left, back to the feed |
+| p right after a video ended (feed scan), p | back to the Home feed, carried on |
+| s / h while paused, q while paused | stats/help shown; quit with stats |
+| `runs/PAUSE` created in the player, deleted 15 s later (no terminal) | resumed in place, 2x still locked; 36 s video ended at 19 s |
+| `runs/PAUSE` during the feed scan / `runs/STOP` while paused | back to the feed / stopped, pause counted (`paused 1m`) |
+
+Not tried live: a pause during an in-feed video (rare path; same handling as the feed scan),
+the phone locked during a pause (avoided: it has a pattern lock — the code path is the normal
+unlock wait), `pause.bat` on Windows.
 
 
 ### 4.11 Statistics and pace estimate
@@ -1102,7 +1155,7 @@ repost"** message, and every repost tap was refused → repost refusal detection
 ## 6. Known limitations and ideas
 
 - Native Windows (uv, `run.bat`): tested on Windows 11 over Wi-Fi (keys, `stop.bat`); USB with
-  the vendor driver is not tried yet.
+  the vendor driver and `pause.bat` (added later) are not tried yet.
 
 - Container runs (CONTAINER.md): Wi-Fi debugging only; if the phone restarts mid-run its
   wireless-debugging port changes and the app can't reconnect on its own (new `PHONE` needed);
@@ -1141,7 +1194,8 @@ repost"** message, and every repost tap was refused → repost refusal detection
   Instagram accounts from the feed or the owner's time zone (they were replaced on 2026-10-20,
   e.g. serial `R58N91XKQZT`, `192.168.1.23:41235`, `chef.marco`). Copy log excerpts into docs
   only after replacing real names. Run data (`runs/`, `.env`) is git-ignored.
-- **The stop file is shared:** every running instance in the folder watches `runs/STOP`. Tests
+- **The stop and pause files are shared:** every running instance in the folder watches
+  `runs/STOP` and `runs/PAUSE`. Tests
   must not create the real one while a real run may be active — point the test at another path
   (`feed_autoplay.STOP_FILE = Path(...)`). (A test once created it while the owner's instance was
   running; that instance happened to predate the stop file.)

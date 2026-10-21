@@ -12,9 +12,10 @@ Flow: find a video post in the feed -> tap it (opens full-screen player with sou
 --save none|followed|all which get saved to your private Saved collection (default none).
 
 Keys while running (h shows them):
-  n = next video  p = pause/resume  x = 2x on/off  w = play mode  l = like mode
-  r = repost mode  c = copy-link mode  b = save mode  s = statistics  q = quit
-Without keys (background runs): create the file runs/STOP to stop cleanly (stop.bat on Windows).
+  n = next video  p = pause (hand the phone over) / resume  x = 2x on/off  w = play mode
+  l = like mode  r = repost mode  c = copy-link mode  b = save mode  s = statistics  q = quit
+Without keys (background runs): create the file runs/STOP to stop cleanly (stop.bat on Windows);
+while the file runs/PAUSE exists the run is paused (pause.bat on Windows toggles it).
 
 Run with uv (sets up Python and the packages by itself): uv run feed_autoplay.py --help
 """
@@ -133,10 +134,20 @@ class Keys:
 # Creating this file stops a run cleanly (final statistics), on any system and without a
 # terminal: background runs, Windows (no SIGTERM there; stop.bat creates it).
 STOP_FILE = Path("runs") / "STOP"
+# While this file exists the run is paused (same as key p): pause.bat toggles it on Windows.
+PAUSE_FILE = Path("runs") / "PAUSE"
+# resuming in place needs the paused frame unchanged (mean grey-level difference, 0-255)
+PAUSE_SAME_FRAME = 4.0
 
 
 class Quit(Exception):
     pass
+
+
+class Resumed(Exception):
+    """Raised by Player.key() after a pause that can't continue where it left off (the phone
+    was used meanwhile, or nothing was playing): the current step is dropped and the run
+    starts again from the Home feed."""
 
 
 # Frame-comparison loop detector settings per playback speed, tuned offline on recorded
@@ -241,7 +252,10 @@ class Player:
         self.stats = dict(played=0, liked=0, reposted=0, repost_refused=0, saved=0, links=0, skipped=0, suggested_skipped=0,
                           end_log=0, end_frames=0, end_static=0, end_max=0, errors=0)
         self.started = time.time()
-        self.waited = dict(locked=0.0, reconnect=0.0)  # idle time, excluded from "active" rate
+        self.waited = dict(locked=0.0, reconnect=0.0, paused=0.0)  # idle, excluded from "active" rate
+        self.pauses = []  # (start, end) of each pause: end-of-video log lines in them are ignored
+        self.context = None  # "player" / "feed-video" while watch() runs: what a pause leaves
+        self.need_feed = True  # (re)start from the Home feed on the next loop turn
         self.cycles = []        # recent active cycle times (s): start of one played video to the next
         self.last_start = None  # (time, idle seconds so far) at the last played video's start
         self.next_report = 20  # print stats every 20 played videos
@@ -264,9 +278,9 @@ class Player:
 
     def mark_played(self):
         """Count a played video and record the cycle since the previous one, minus the time
-        spent waiting (lock screen, reconnect back-off) in between."""
+        spent waiting (lock screen, reconnect back-off, pauses) in between."""
         self.stats["played"] += 1
-        now, idle = time.time(), self.waited["locked"] + self.waited["reconnect"]
+        now, idle = time.time(), sum(self.waited.values())
         if self.last_start is not None:
             t0, idle0 = self.last_start
             self.cycles = (self.cycles + [max(now - t0 - (idle - idle0), 1.0)])[-self.PACE_KEEP:]
@@ -286,10 +300,10 @@ class Player:
     def report(self):
         """Statistics block: one line per topic. Pace = estimate from the recent cycle times
         (what to expect if things go on like this); the whole-run rates follow for
-        comparison, per active hour too when time was spent waiting (unlock, reconnect)."""
+        comparison, per active hour too when time was spent waiting (unlock, reconnect, pause)."""
         s = self.stats
         elapsed = max(time.time() - self.started, 1)
-        idle = self.waited["locked"] + self.waited["reconnect"]
+        idle = sum(self.waited.values())
         active = max(elapsed - idle, 1)
         whole = f"whole run {s['played'] / (elapsed / 3600):.1f}/h"
         if idle >= 60:
@@ -313,7 +327,7 @@ class Player:
         log(f"   ends     log {s['end_log']} · frames {s['end_frames']} · static {s['end_static']} · "
             f"max-time {s['end_max']}")
         log(f"   waits    errors recovered {s['errors']} · locked {self.hm(self.waited['locked'])} · "
-            f"reconnecting {self.hm(self.waited['reconnect'])}")
+            f"reconnecting {self.hm(self.waited['reconnect'])} · paused {self.hm(self.waited['paused'])}")
 
     def locked(self):
         """Is the lock screen showing? ("screen on" alone can't tell: it is also on while
@@ -346,8 +360,18 @@ class Player:
 
     # ---- helpers -------------------------------------------------------
     def key(self):
-        """Handle a pending key press. Global keys (quit, modes, stats, help) are dealt with
-        here; n and p are returned for the caller to act on, everything else is None."""
+        """Handle a pending key press and the stop / pause files. Global keys (quit, pause,
+        modes, stats, help) are dealt with here; n is returned for the caller to act on,
+        everything else is None. A pause blocks here until resumed (see pause())."""
+        k = self.poll()
+        if k == "p" or PAUSE_FILE.exists():
+            self.pause(by_file=k != "p")
+            return None
+        return k if k == "n" else None
+
+    def poll(self):
+        """The keys and the stop file that work everywhere, paused or not; returns the key
+        (or None) for the caller."""
         if STOP_FILE.exists():
             try:
                 STOP_FILE.unlink()
@@ -373,9 +397,74 @@ class Player:
             self.report()
         elif k in ("h", "?"):
             self.help()
-        elif k in ("n", "p"):
-            return k
-        return None
+        return k
+
+    def pause(self, by_file):
+        """Hand the phone over: pause the video if the full-screen player is playing it, then
+        leave the phone alone -- no taps, swipes or screen reads -- until resumed with p (or,
+        when paused by the file, until runs/PAUSE is deleted). Instagram's end-of-video log
+        lines from that time are ignored (they would come from whatever you watch).
+
+        On resume nothing is tapped blindly: the video is resumed in place only if the same
+        video is still open and paused at the same frame (nobody touched it); otherwise the
+        current video is dropped (no like/repost/link/save) and Resumed is raised, which takes
+        the run back to the Home feed."""
+        t0 = time.time()
+        ref = None
+        if self.context == "player":
+            try:
+                self.d.click(self.w // 2, self.h // 2)  # tap toggles play/pause
+                time.sleep(1.0)  # let the tap's overlay fade
+                ref = (self.player_author(), self.frame(self.player_box()))
+            except Exception:  # can't tell later whether it's unchanged: start over on resume
+                ref = None
+        how = f"delete {PAUSE_FILE} to resume" if by_file else "p to resume"
+        log(f"⏸ paused: the phone is yours ({how})")
+        try:
+            while True:
+                k = self.poll()  # q, stop file, modes, stats and help still work
+                if k == "p" or (by_file and not PAUSE_FILE.exists()):
+                    break
+                time.sleep(0.2)
+        finally:  # also when quitting while paused: the final statistics count the pause
+            t1 = time.time()
+            self.pauses.append((t0, t1))
+            self.waited["paused"] += t1 - t0
+        try:
+            PAUSE_FILE.unlink()  # resumed with p while the file exists: don't pause again
+        except OSError:
+            pass
+        if ref and self.same_paused_video(*ref):
+            self.d.click(self.w // 2, self.h // 2)
+            log(f"▶ resumed after {self.hm(t1 - t0)}")
+            return
+        if self.context:
+            self.stats["skipped"] += 1
+            log(f"▶ resumed after {self.hm(t1 - t0)}: the phone was used, so this video is left "
+                f"(no actions); back to the Home feed")
+        else:
+            log(f"▶ resumed after {self.hm(t1 - t0)}: back to the Home feed")
+        raise Resumed
+
+    def same_paused_video(self, author, ref_frame):
+        """After a pause: Instagram in front, unlocked, the same author in the full-screen
+        player and the same (paused) frame -- i.e. nobody touched the video."""
+        try:
+            if not self.d.info.get("screenOn") or self.locked():
+                return False
+            if self.d.app_current().get("package") != PKG or not self.in_viewer():
+                return False
+            if self.player_author() != author:
+                return False
+            return float(np.abs(self.frame(self.player_box()) - ref_frame).mean()) < PAUSE_SAME_FRAME
+        except Exception:
+            return False
+
+    def player_author(self):
+        """Author line of the full-screen player (None if not found)."""
+        m = re.search(r'text="([^"]*)" resource-id="' + re.escape(RID + "clips_author_username"),
+                      self.d.dump_hierarchy())
+        return m.group(1) if m else None
 
     def help(self):
         """Key help in the same block style as the statistics, current modes inline."""
@@ -388,7 +477,7 @@ class Player:
 
         log("── keys " + "─" * 56)
         log(f"   playback   n  next video (a skipped video gets no like/repost/link/save)")
-        log(f"              p  pause / resume (full-screen player only)")
+        log(f"              p  pause: the phone is yours until p again (also runs/PAUSE)")
         speed = "x  2x speed".ljust(20) + cycle_text(SPEED_MODES, "on" if a.speed2x else "off")
         log(f"              {speed:<45} from the next video")
         log(f"              {mode('w')}")
@@ -621,10 +710,28 @@ class Player:
         return False
 
     def watch(self, still_open, box=None, can_pause=True, followed=True, speed=1):
+        """See _watch(); records what a pause during it would leave (self.context)."""
+        self.context = "player" if can_pause else "feed-video"
+        try:
+            return self._watch(still_open, box, followed, speed)
+        finally:
+            self.context = None
+
+    def paused_since(self, start):
+        """Seconds spent paused since `start`."""
+        return sum(t1 - max(t0, start) for t0, t1 in self.pauses if t1 > start)
+
+    def in_pause(self, t, slack=2.0):
+        """Was time t during a pause (or just after it: log lines arrive a little late)?"""
+        return any(t0 <= t <= t1 + slack for t0, t1 in self.pauses)
+
+    def _watch(self, still_open, box=None, followed=True, speed=1):
         """Play the video until it has played args.loops times or hit max time (-> True),
         or until it is skipped / it goes away (-> False).
 
         still_open: callable telling whether the video is still on screen;
+        can_pause (watch()): whether the video is in the full-screen player, where a pause taps
+        it to pause it (a tap on an in-feed video would only toggle its sound);
         box: screen area the frame comparison looks at (None: the full-screen player's,
         per the speed profile);
         speed: actual playback speed (1 or 2), selects the detector settings (DETECTOR);
@@ -644,16 +751,15 @@ class Player:
         if box is None:
             box = self.player_box(cfg["top"])
         start = time.time()
-        paused_total, paused_at = 0.0, None
         refs, moved, loops, diffs = [], False, 0, []
         history = []  # (t, frame) kept for the max-watch diagnostic
         while True:
             if self.ends:
                 if not self.ends.ensure_running():  # cheap: a poll() of the logcat process
                     log("  player-log watcher had stopped (adb connection drop?); restarted")
-                ends = self.ends.ends_since(start)
+                ends = [e for e in self.ends.ends_since(start) if not self.in_pause(e[0])]
                 if len(ends) >= a.loops:
-                    t = ends[-1][0] - start - paused_total
+                    t = ends[-1][0] - start - self.paused_since(start)
                     log(f"  end of video reached at {t:.0f}s (duration {ends[-1][1] / 1000:.0f}s)")
                     self.stats["end_log"] += 1
                     return True
@@ -666,26 +772,12 @@ class Player:
                 log("⏭ skipped: play mode is now 'followed' and you don't follow this account")
                 self.stats["skipped"] += 1
                 return False
-            if k == "p" and not can_pause:
-                log("  pause is only available in the full-screen player")
-            elif k == "p":
-                self.d.click(self.w // 2, self.h // 2)  # tap toggles play/pause
-                if paused_at is None:
-                    paused_at = time.time()
-                    log("⏸ paused (p to resume)")
-                else:
-                    paused_total += time.time() - paused_at
-                    paused_at = None
-                    log("▶ resumed")
-            if paused_at is not None:
-                time.sleep(0.2)
-                continue
             if not still_open():
                 log("  video closed unexpectedly")
                 return False
 
             f = self.frame(box)
-            t = time.time() - start - paused_total  # after the screenshot, as in the recorded traces
+            t = time.time() - start - self.paused_since(start)  # after the screenshot, as in the recorded traces
             history.append((t, f.astype(np.uint8)))
             if t < cfg["ref_start"]:
                 continue
@@ -855,13 +947,12 @@ class Player:
 
     def run(self):
         failures = 0  # consecutive unexpected errors
-        started = False
         while True:
             try:
-                if not started:  # inside the try: a hiccup at startup is recovered like any other
-                    self.d.screen_on()
+                if self.need_feed:  # at start and after a pause; inside the try: a hiccup here
+                    self.d.screen_on()  # is recovered like any other
                     self.ensure_feed()
-                    started = True
+                    self.need_feed = False
                 if self.ends and not self.ends.ensure_running():
                     log("player-log watcher had stopped (adb connection drop?); restarted")
                 opened = self.open_next_video()
@@ -895,6 +986,8 @@ class Player:
                 self.recover()
             except (Quit, KeyboardInterrupt):
                 raise
+            except Resumed:  # after a pause the phone may be anywhere: start from the feed
+                self.need_feed = True
             except Exception as e:
                 # anything else (adb/Wi-Fi drop, uiautomator2 agent restart, ...): unattended
                 # runs must not die -- back off, reconnect, carry on
@@ -914,6 +1007,10 @@ class Player:
                 if self.ends:
                     self.ends.ensure_running()
             self.ensure_feed()
+        except Quit:
+            raise
+        except Resumed:  # paused while waiting for an unlock: the next loop turn starts over
+            self.need_feed = True
         except Exception as e:
             log(f"recovery failed ({type(e).__name__}: {str(e)[:100]}); will retry")
 
@@ -1232,7 +1329,8 @@ def startup_report(d, args, keys_on):
         f"save {args.save}")
     log(f"   end        " + ("Instagram's log + frame comparison" if args.use_log else "frame comparison only (--no-log)"))
     stop = "stop.bat or create runs\\STOP" if WINDOWS else "Ctrl-C, kill <pid> or create runs/STOP"
-    log(f"   keys       " + ("press h for help" if keys_on else f"off (no terminal) -- stop: {stop}"))
+    pause = "pause.bat" if WINDOWS else "create / delete runs/PAUSE"
+    log(f"   keys       " + ("press h for help" if keys_on else f"off (no terminal) -- stop: {stop} · pause: {pause}"))
 
 
 def pick_serial():
@@ -1309,10 +1407,11 @@ def main():
             stream.reconfigure(encoding="utf-8", errors="replace")
         except (AttributeError, ValueError):
             pass
-    try:  # a stop file left over from an earlier run must not stop this one at once
-        STOP_FILE.unlink()
-    except OSError:
-        pass
+    for f in (STOP_FILE, PAUSE_FILE):  # left over from an earlier run: must not stop/pause this one
+        try:
+            f.unlink()
+        except OSError:
+            pass
 
     d = u2.connect(args.serial or pick_serial())
     startup_report(d, args, keys_on=sys.stdin.isatty())

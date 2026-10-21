@@ -85,6 +85,8 @@ uv run feed_autoplay.py --play all --2x                      # with keys: h help
 mkdir -p runs
 nohup uv run feed_autoplay.py --play all --2x < /dev/null >> runs/run.log 2>&1 &
 tail -f runs/run.log                                          # follow it
+touch runs/PAUSE                                              # pause: the phone is yours
+rm runs/PAUSE                                                 # resume
 touch runs/STOP                                               # stop it (or: kill <pid>)
 ```
 
@@ -142,6 +144,7 @@ Windows").
 **In the background** (a minimized window):
 ```powershell
 start "" /min run.bat --play all --2x                        # start it
+.\pause.bat                                                   # pause (the phone is yours) / resume
 .\stop.bat                                                    # stop it
 ```
 
@@ -242,13 +245,19 @@ already liked/reposted/saved is left alone. Example:
 | Key | | Key | |
 |---|---|---|---|
 | **n** | next video | **l** | like mode |
-| **p** | pause / resume | **r** | repost mode |
+| **p** | pause (the phone is yours) / resume | **r** | repost mode |
 | **x** | 2x on / off (from the next video) | **c** | copy-link mode |
 | **w** | play mode | **b** | save mode |
 | **s** | statistics | **h** / **?** | help |
 | | | **q** | quit |
 
 Keys work when the tool runs in a terminal window, not in the background.
+
+**Using the phone in between:** press **p** (in the background: create `runs/PAUSE`, or
+`pause.bat` on Windows), use the phone as you like, then press **p** again (delete the file /
+`pause.bat` again). While paused the tool doesn't touch the phone at all. On resume it carries
+on with the same video if you left it untouched; otherwise it leaves that video (no like etc.)
+and continues from the Home feed. Paused time doesn't count in the statistics' pace.
 
 ### What it shows
 
