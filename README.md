@@ -32,7 +32,7 @@ flowchart TD
 | **Phone connection** | USB or Wi-Fi | USB (+ phone maker's driver) or Wi-Fi | Wi-Fi only |
 | **Start** | `uv run feed_autoplay.py` | double-click `run.bat` | `docker compose run --rm app` |
 | **Best for** | everyday use on Linux/macOS | everyday use on Windows | no Python on the computer; same setup everywhere |
-| **Status** | tested on Linux; macOS expected to work | built for Windows, not yet tried there | tested on Linux; not yet tried on Windows |
+| **Status** | tested on Linux; macOS expected to work | tested on Windows 11 (Wi-Fi); USB not yet tried | tested on Linux; not yet tried on Windows |
 
 *USB is the more stable connection for long runs.* Whichever you choose, the tool, its options and
 keys are the same — see the [feed_autoplay reference](#feed_autoplay-reference).

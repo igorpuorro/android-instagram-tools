@@ -135,8 +135,10 @@ kept with CRLF line endings by `.gitattributes`. Code differences, all behind `W
 stdout/stderr reconfigured to UTF-8 (all systems) so the symbols/emoji can't crash an old console
 or a redirected file. Windows has no SIGTERM for console apps (`taskkill` without `/F` doesn't
 reach them, `/F` loses the statistics) — hence the stop file. USB works natively (vendor USB
-driver needed). ⚠ Built but **not yet run on Windows**; Linux runs the same uv workflow (tested:
-setup, a background run stopped via the stop file).
+driver needed). **Tested on Windows 11** by the owner (2026-10-21): `run.bat` over Wi-Fi
+debugging, the keys (msvcrt) and `stop.bat` all work. USB on Windows (vendor driver) is not
+tried yet. Linux runs the same uv workflow (tested: setup, a background run stopped via the stop
+file).
 
 **In a container (Docker or Podman — no Python on the host):** see `CONTAINER.md`.
 Image `feed-autoplay` (named in `compose.yaml`; the code is copied in, so rebuild after code
@@ -159,7 +161,7 @@ named volume `adb-keys` for the pairing key, default `command:` for `up -d`), `.
 - `docker/podman stop` sends SIGTERM → now handled like Ctrl-C (stats printed); verified.
 - Messages that print a command (max-watch diagnosis) show the container form when
   `FEED_AUTOPLAY_CONTAINER` is set.
-- Not tried: Windows itself (container or native), Podman, `pair` from the container, likes/reposts/links/saves inside
+- Not tried: the container on Windows (native Windows with uv is tested, see above), Podman, `pair` from the container, likes/reposts/links/saves inside
   the container (tested outside, same code).
 
 Instagram's terms forbid automated access. Playing and liking at human pace is low-key, but
@@ -1092,8 +1094,8 @@ repost"** message, and every repost tap was refused → repost refusal detection
 
 ## 6. Known limitations and ideas
 
-- Native Windows (uv, `run.bat`): built, not yet run on a Windows PC — keys via msvcrt, USB with
-  the vendor driver and `stop.bat` are untested there.
+- Native Windows (uv, `run.bat`): tested on Windows 11 over Wi-Fi (keys, `stop.bat`); USB with
+  the vendor driver is not tried yet.
 
 - Container runs (CONTAINER.md): Wi-Fi debugging only; if the phone restarts mid-run its
   wireless-debugging port changes and the app can't reconnect on its own (new `PHONE` needed);
