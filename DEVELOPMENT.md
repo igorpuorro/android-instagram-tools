@@ -183,8 +183,12 @@ and gets fewer antivirus false alarms.
   117 MB unpacked); started from another folder with no `settings.txt` it created one, showed
   "settings from settings.txt", put `runs/` next to the app, connected with the bundled adb and
   stopped via its own `runs/STOP`; the connect wizard (skip pairing, wrong port → retry, right
-  port → "Ready"). **Not yet tried:** the Windows build itself (GitHub runner), and the zip on a
-  Windows PC — SmartScreen, Defender, `Connect phone.bat`, the window staying open, USB.
+  port → "Ready"). **On Windows:** the release builds of v0.2.0 and v0.2.1 passed on GitHub's
+  runner (self-check included; 43 MB zip with `adb.exe` + its DLLs); the owner ran the v0.2.0 zip
+  on Windows 11 (2026-10-21) — "working really fine". Not confirmed separately: USB with the
+  vendor driver, and how SmartScreen / Defender react.
+- **Releases:** v0.2.0 (first Windows app), v0.2.1 (new default `settings.txt`; `.sha256` with LF
+  line endings so `sha256sum -c` works on Linux/macOS).
 
 **In a container (Docker or Podman — no Python on the host):** see `CONTAINER.md`.
 Image `feed-autoplay` (named in `compose.yaml`; the code is copied in, so rebuild after code
@@ -223,6 +227,7 @@ Everything below was measured on this setup; coordinates and IDs may differ else
 | Instagram | **451.0.0.53.80** — auto-updated from 450.0.0.50.77 on 2026-10-16 19:23, a few hours into development; only the first exploration (feed headers, first player dumps) ran on 450. All recordings, tuning, icon masks and long runs are on 451. The app warns at startup on any other version (`TESTED_INSTAGRAM`). |
 | PC | Ubuntu; Python 3.10 (development, pip venv) → Python 3.13 via uv (since 2026-10-21); uiautomator2 3.7.0, adbutils 2.12.0, numpy 2.2.6, Pillow 12.3.0 |
 | Connection | USB at first, later Wi-Fi debugging |
+| Windows | the owner's Windows 11 PC: native uv route (`run.bat`, 4.10 keys, `stop.bat`) and the Windows app zip (v0.2.0) — run by the owner, results reported back |
 | Phone settings | pattern screen lock; Developer options → **Stay awake** on (since 2026-10-18, after 5.1) |
 
 Useful screen landmarks (1080×2340): status bar ends ~83 px; Instagram tab bar starts at
@@ -1215,8 +1220,7 @@ repost"** message, and every repost tap was refused → repost refusal detection
 - Native Windows (uv, `run.bat`): tested on Windows 11 over Wi-Fi (keys, `stop.bat`); USB with
   the vendor driver and `pause.bat` (added later) are not tried yet.
 
-- Windows app (`packaging/`): built only on GitHub's Windows runner so far and not yet run on a
-  Windows PC; unsigned, so SmartScreen warns on first start and antivirus may flag it (report
+- Windows app (`packaging/`): tested on Windows 11 (v0.2.0; USB not confirmed); unsigned, so SmartScreen warns on first start and antivirus may flag it (report
   false positives to Microsoft). Updating over a running adb server fails on the locked
   `adb.exe`: `feed_autoplay.exe adb kill-server` first.
 

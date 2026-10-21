@@ -34,7 +34,7 @@ flowchart TD
 | **Start** | `uv run feed_autoplay.py` | double-click `run.bat` | `docker compose run --rm app` | double-click `feed_autoplay.exe` |
 | **Options** | on the command line | on the command line | `compose.yaml` / command line | `settings.txt` (Notepad) |
 | **Best for** | everyday use on Linux/macOS | Windows, following the code (`git pull`) | no Python on the computer; same setup everywhere | Windows, the simplest |
-| **Status** | tested on Linux; macOS expected to work | tested on Windows 11 (Wi-Fi); USB not yet tried | tested on Linux; not yet tried on Windows | the same bundle tested on Linux; not yet tried on Windows |
+| **Status** | tested on Linux; macOS expected to work | tested on Windows 11 (Wi-Fi); USB not yet tried | tested on Linux; not yet tried on Windows | tested on Windows 11; USB not confirmed yet |
 
 *USB is the more stable connection for long runs.* Whichever you choose, the tool, its options and
 keys are the same — see the [feed_autoplay reference](#feed_autoplay-reference).
