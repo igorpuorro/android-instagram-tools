@@ -252,8 +252,9 @@ unzip it (e.g. to your Desktop). **For USB:** also install your phone maker's US
 
 **Double-click `feed_autoplay.exe`.** The first time, Windows may say "Windows protected your
 PC": **More info → Run anyway** (the app isn't signed with a paid certificate). On its first
-start it creates **`settings.txt`** next to it with the default options — open it with Notepad
-to change them (e.g. remove the `#` before `--2x`). Keys work in its window (**h** help · **s**
+start it creates **`settings.txt`** next to it with the app's default settings (play all · 2x · like all · repost followed · copy link all · save all) — open it
+with Notepad to change them (put a `#` in front of an option to turn it off). An update doesn't
+change an existing `settings.txt`. Keys work in its window (**h** help · **s**
 stats · **q** quit); it stays open at the end so you can read the statistics.
 
 **Pause / stop without the window in front:** double-click `pause.bat` (again to resume) /

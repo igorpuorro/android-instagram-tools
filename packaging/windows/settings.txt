@@ -1,15 +1,15 @@
 # feed_autoplay settings -- used when feed_autoplay.exe is started without options (double-click).
-# Remove the "#" in front of an option to use it; "#" starts a comment. Started from a terminal
+# Put a "#" in front of an option to turn it off; "#" starts a comment. Started from a terminal
 # with options (feed_autoplay.exe --play all --2x), this file is ignored.
 # All options and what they do: feed_autoplay.exe --help, or README.txt.
 
 # playback
---play followed          # followed = only accounts you follow; all = every video
-# --2x                   # play at 2x speed (key x switches it during a run)
+--play all               # all = every video; followed = only accounts you follow
+--2x                     # play at 2x speed (key x switches it during a run)
 # --max-watch 300        # stop watching a video after this many seconds
 
 # actions on videos watched to the end: none, followed or all
---like followed
-# --repost followed      # reposts show on your profile; Instagram limits them
-# --share-link followed  # copies each link into runs\shared-links.txt
-# --save followed        # private Saved collection
+--like all
+--repost followed        # reposts show on your profile; Instagram limits them
+--share-link all         # copies each link into runs\shared-links.txt
+--save all               # private Saved collection

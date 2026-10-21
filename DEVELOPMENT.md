@@ -96,7 +96,7 @@ Keys while running (only when started from a terminal):
 At startup the app prints a block with the phone, the Instagram version and the settings:
 
 ```
-── feed_autoplay 0.2.0 ─────────────────────────────────────────
+── feed_autoplay 0.2.1 ─────────────────────────────────────────
    phone      Samsung SM-A515F · Android 11 · serial R58N91XKQZT · Wi-Fi
    instagram  451.0.0.53.80
    playback   play all · 2x on · max 300 s per video
@@ -156,8 +156,10 @@ and gets fewer antivirus false alarms.
 - **Code** (all behind `FROZEN = getattr(sys, "frozen", False)`; run as a script nothing changes):
   bundled files from `BUNDLE_DIR` (PyInstaller's `_internal`), `RUNS` and `settings.txt` next to
   the exe (`APP_DIR`) whatever the current folder; `ADBUTILS_ADB_PATH` set to the bundled adb (not
-  one found on PATH); started without options it reads `settings.txt`, created with the defaults
-  on first start (it isn't in the zip, so unzipping an update over the folder keeps it); a
+  one found on PATH); started without options it reads `settings.txt`, created on first start
+  from `packaging/windows/settings.txt` (play all · 2x · like all · repost followed · copy link all · save all since 0.2.1 — the app's own
+  choice, unlike the command-line defaults, which stay cautious); it isn't in the zip, so
+  unzipping an update over the folder keeps it — new defaults reach new installs only; a
   double-clicked exe owns its console (`GetConsoleProcessList`), so `entry()` waits for Enter at
   the end, after errors too. Helper commands for every route: `connect` (guided pairing /
   connecting, retries a wrong address), `adb …`, `check` (version, bundled files, adb).

@@ -31,8 +31,9 @@ Use it at your own risk, with sensible settings.
 
 3. Run
 ------
-Double-click feed_autoplay.exe. It uses the options in settings.txt, which it creates with
-the defaults on its first start -- open it with Notepad to change them.
+Double-click feed_autoplay.exe. It uses the options in settings.txt, which it creates on its
+first start with: play all, 2x, like all, repost followed, copy link all, save all -- open it
+with Notepad to change them (a "#" in front of an option turns it off).
 The first time, Windows may say "Windows protected your PC": click "More info", then
 "Run anyway" (the app isn't signed with a paid certificate).
 

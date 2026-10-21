@@ -35,7 +35,7 @@ import time
 import traceback
 from pathlib import Path
 
-__version__ = "0.2.0"  # same as pyproject.toml; the Windows release tag is v<version>
+__version__ = "0.2.1"  # same as pyproject.toml; the Windows release tag is v<version>
 
 WINDOWS = os.name == "nt"
 # Running as the Windows app built by PyInstaller (packaging/, DEVELOPMENT.md 1): the bundled

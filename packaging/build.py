@@ -119,7 +119,9 @@ def main():
     zip_base = BUILD / f"feed_autoplay-{PLATFORM}-{ver}"
     zip_path = Path(shutil.make_archive(str(zip_base), "zip", root_dir=app.parent, base_dir=app.name))
     digest = hashlib.sha256(zip_path.read_bytes()).hexdigest()
-    zip_path.with_suffix(".zip.sha256").write_text(f"{digest}  {zip_path.name}\n", encoding="utf-8")
+    # "\n" line end on every system: `sha256sum -c` (Linux/macOS) fails on Windows' "\r\n"
+    zip_path.with_suffix(".zip.sha256").write_text(f"{digest}  {zip_path.name}\n", encoding="utf-8",
+                                                    newline="\n")
     size = zip_path.stat().st_size / 1e6
     print(f"\n{zip_path.relative_to(ROOT)}  {size:.0f} MB  {len(names)} files  sha256 {digest[:16]}…")
 
