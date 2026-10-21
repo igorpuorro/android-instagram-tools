@@ -1,6 +1,6 @@
 [project]
 name = "android-instagram-tools"
-version = "0.1.0"
+version = "0.2.0"
 description = "Tools that drive the Instagram app on an Android phone over adb (first tool: feed_autoplay)"
 readme = "README.md"
 # The pinned versions below have ready-made wheels up to Python 3.13; uv fetches a matching
@@ -17,3 +17,8 @@ dependencies = [
 [tool.uv]
 # not an installable package: the tools are run as scripts (`uv run feed_autoplay.py ...`)
 package = false
+
+[dependency-groups]
+build = [
+    "pyinstaller==6.22.3",  # builds the Windows app (packaging/); not needed to run
+]

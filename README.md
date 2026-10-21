@@ -20,19 +20,21 @@ like a person would — no Instagram API, no browser.
 flowchart TD
     Q1{"Which computer?"}
     Q1 -->|Linux or macOS| A["<b>A. Linux / macOS with uv</b><br/>USB or Wi-Fi"]
-    Q1 -->|Windows| Q2{"Install Docker Desktop<br/>instead of a small tool?"}
-    Q2 -->|"No (simplest)"| B["<b>B. Windows with uv</b><br/>double-click run.bat · USB or Wi-Fi"]
-    Q2 -->|Yes| C["<b>C. Container</b><br/>Docker / Podman · Wi-Fi only"]
+    Q1 -->|Windows| Q2{"How?"}
+    Q2 -->|"download & double-click (simplest)"| D["<b>D. Windows app</b><br/>unzip, double-click · USB or Wi-Fi"]
+    Q2 -->|"from the source, with updates by git pull"| B["<b>B. Windows with uv</b><br/>double-click run.bat · USB or Wi-Fi"]
+    Q2 -->|"Docker / Podman"| C["<b>C. Container</b><br/>Docker / Podman · Wi-Fi only"]
     A -.->|"prefer no Python at all"| C
 ```
 
-| | [A. Linux / macOS with uv](#a-linux-or-macos-with-uv) | [B. Windows with uv](#b-windows-with-uv) | [C. Container](#c-any-system-in-a-container-docker-or-podman) |
-|---|---|---|---|
-| **You install** | uv (one command) | uv (one command) | Docker Desktop or Podman Desktop |
-| **Phone connection** | USB or Wi-Fi | USB (+ phone maker's driver) or Wi-Fi | Wi-Fi only |
-| **Start** | `uv run feed_autoplay.py` | double-click `run.bat` | `docker compose run --rm app` |
-| **Best for** | everyday use on Linux/macOS | everyday use on Windows | no Python on the computer; same setup everywhere |
-| **Status** | tested on Linux; macOS expected to work | tested on Windows 11 (Wi-Fi); USB not yet tried | tested on Linux; not yet tried on Windows |
+| | [A. Linux / macOS with uv](#a-linux-or-macos-with-uv) | [B. Windows with uv](#b-windows-with-uv) | [C. Container](#c-any-system-in-a-container-docker-or-podman) | [D. Windows app](#d-windows-download-the-app-nothing-to-install) |
+|---|---|---|---|---|
+| **You install** | uv (one command) | uv (one command) | Docker Desktop or Podman Desktop | nothing (unzip) |
+| **Phone connection** | USB or Wi-Fi | USB (+ phone maker's driver) or Wi-Fi | Wi-Fi only | USB (+ phone maker's driver) or Wi-Fi |
+| **Start** | `uv run feed_autoplay.py` | double-click `run.bat` | `docker compose run --rm app` | double-click `feed_autoplay.exe` |
+| **Options** | on the command line | on the command line | `compose.yaml` / command line | `settings.txt` (Notepad) |
+| **Best for** | everyday use on Linux/macOS | Windows, following the code (`git pull`) | no Python on the computer; same setup everywhere | Windows, the simplest |
+| **Status** | tested on Linux; macOS expected to work | tested on Windows 11 (Wi-Fi); USB not yet tried | tested on Linux; not yet tried on Windows | the same bundle tested on Linux; not yet tried on Windows |
 
 *USB is the more stable connection for long runs.* Whichever you choose, the tool, its options and
 keys are the same — see the [feed_autoplay reference](#feed_autoplay-reference).
@@ -216,6 +218,48 @@ With Podman, write `podman compose` instead of `docker compose`. **Update:** `gi
 `.env`. More (saving the output, mirroring alongside, troubleshooting):
 **[CONTAINER.md](CONTAINER.md)**.
 
+## D. Windows, download the app (nothing to install)
+
+**You need:** an Android phone with Instagram logged in, a Windows computer, and a USB cable or the
+same Wi-Fi network. The app comes as a zip with everything inside (Python, the packages, adb) —
+no uv, git or terminal needed.
+
+### 1. Prepare the phone
+
+1. Settings → About phone → tap **Build number** 7 times (enables Developer options).
+2. Developer options:
+   - **USB debugging** on (for USB), and/or **Wireless debugging** on (for Wi-Fi; phone and
+     computer on the same network);
+   - **Stay awake** on (screen stays on while charging) — recommended for long runs.
+3. Keep the phone **unlocked** with Instagram available. If it locks, the tools wait until you
+   unlock it (they never try to unlock it themselves).
+4. On first connection over USB, accept the "Allow USB debugging?" prompt on the phone.
+
+### 2. Download (once)
+
+From the repository's **Releases** page, download `feed_autoplay-windows-<version>.zip` and
+unzip it (e.g. to your Desktop). **For USB:** also install your phone maker's USB driver
+(Samsung: "Samsung Android USB Driver for Windows").
+
+### 3. Connect the phone
+
+- **USB:** plug it in — nothing else to do.
+- **Wi-Fi:** double-click **`Connect phone.bat`** in the folder. It asks for the pairing IP &
+  port and code ("Pair device with pairing code", needed once), then for the IP & port at the top
+  of the Wireless debugging screen, and tells you when the phone is ready.
+
+### 4. Run
+
+**Double-click `feed_autoplay.exe`.** The first time, Windows may say "Windows protected your
+PC": **More info → Run anyway** (the app isn't signed with a paid certificate). On its first
+start it creates **`settings.txt`** next to it with the default options — open it with Notepad
+to change them (e.g. remove the `#` before `--2x`). Keys work in its window (**h** help · **s**
+stats · **q** quit); it stays open at the end so you can read the statistics.
+
+**Pause / stop without the window in front:** double-click `pause.bat` (again to resume) /
+`stop.bat`. **Update:** unzip the new version over the old folder — `settings.txt` and `runs` are
+kept. More (troubleshooting, options): `README.txt` in the folder.
+
 ---
 
 ## feed_autoplay reference
@@ -223,7 +267,7 @@ With Podman, write `podman compose` instead of `docker compose`. **Update:** `gi
 Plays the videos of your **Instagram home timeline**, one after another, without you touching the
 phone — so a mirrored phone (e.g. scrcpy on a second screen) is always playing something.
 Optionally at **2x**, and it can **like**, **repost**, **copy the link of** and/or **save** each
-video it watched to the end. The same options and keys apply in A, B and C.
+video it watched to the end. The same options and keys apply in A, B, C and D.
 
 ### Options
 

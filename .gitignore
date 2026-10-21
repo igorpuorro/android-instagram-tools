@@ -55,3 +55,6 @@ desktop.ini
 # scratch files from manual tests (e.g. a copied adb key for container tests)
 .test-*
 .cmp-*
+
+# the Windows app build (packaging/build.py)
+build/

@@ -96,7 +96,7 @@ Keys while running (only when started from a terminal):
 At startup the app prints a block with the phone, the Instagram version and the settings:
 
 ```
-── feed_autoplay ───────────────────────────────────────────────
+── feed_autoplay 0.2.0 ─────────────────────────────────────────
    phone      Samsung SM-A515F · Android 11 · serial R58N91XKQZT · Wi-Fi
    instagram  451.0.0.53.80
    playback   play all · 2x on · max 300 s per video
@@ -106,7 +106,8 @@ At startup the app prints a block with the phone, the Instagram version and the 
 ────────────────────────────────────────────────────────────────
 ```
 
-`phone` comes from `getprop` (the hardware serial, not adb's Wi-Fi connection name), `Wi-Fi`/`USB`
+The header shows the version (`__version__`). With the Windows app started without options a
+`settings   from settings.txt` line follows `actions`. `phone` comes from `getprop` (the hardware serial, not adb's Wi-Fi connection name), `Wi-Fi`/`USB`
 from the adb serial's form. On an Instagram version not in `TESTED_INSTAGRAM` the `instagram`
 line adds "⚠ untested version" — selectors, texts and icon masks (4.7) may need re-checking.
 `keys` says "off" when stdin isn't a terminal (background runs) and then names the stop and
@@ -144,6 +145,44 @@ driver needed). **Tested on Windows 11** by the owner (2026-10-21): `run.bat` ov
 debugging, the keys (msvcrt) and `stop.bat` all work. USB on Windows (vendor driver) is not
 tried yet. Linux runs the same uv workflow (tested: setup, a background run stopped via the stop
 file).
+
+**Windows app (one-folder zip, `packaging/`, README D):** for users who shouldn't need uv, git
+or a terminal. PyInstaller builds `feed_autoplay.exe` plus an `_internal\` folder with Python,
+the packages, adb and the icon masks; the zip adds `Connect phone.bat`, `pause.bat`,
+`stop.bat`, `README.txt` and `LICENSES\`. *One folder, not one file*: a one-file exe unpacks
+itself into a new temp folder on every start, and adb's background server keeps running from
+there (folder locked, leftovers, a different adb path each run); one folder also starts at once
+and gets fewer antivirus false alarms.
+- **Code** (all behind `FROZEN = getattr(sys, "frozen", False)`; run as a script nothing changes):
+  bundled files from `BUNDLE_DIR` (PyInstaller's `_internal`), `RUNS` and `settings.txt` next to
+  the exe (`APP_DIR`) whatever the current folder; `ADBUTILS_ADB_PATH` set to the bundled adb (not
+  one found on PATH); started without options it reads `settings.txt`, created with the defaults
+  on first start (it isn't in the zip, so unzipping an update over the folder keeps it); a
+  double-clicked exe owns its console (`GetConsoleProcessList`), so `entry()` waits for Enter at
+  the end, after errors too. Helper commands for every route: `connect` (guided pairing /
+  connecting, retries a wrong address), `adb …`, `check` (version, bundled files, adb).
+- **Build:** `uv run --group build packaging/build.py` — PyInstaller (`packaging/feed_autoplay.spec`,
+  data files listed one by one: icon masks, uiautomator2's `u2.jar` / `app-uiautomator.apk` (it
+  installs its helper on the phone from them), adbutils' `binaries`, the default settings), the
+  extra files, third-party license notices (every shipped package + Python + PyInstaller's
+  bootloader + adb's Apache-2.0), a self-check of the built app (`check`, `--help`,
+  `adb version`), a scan that fails on private paths (`runs`, `.env`, traces…), then
+  `build/feed_autoplay-<windows|linux>-<version>.zip` + `.sha256`. PyInstaller only builds for
+  the system it runs on: the Windows zip comes from Windows; on Linux the same script builds the
+  same bundle for Linux, to test it. PyInstaller is pinned in the `build` dependency group
+  (`uv run` without `--group build` doesn't install it).
+- **Release:** `.github/workflows/windows-release.yml` on a `windows-latest` runner, `uv run
+  --frozen --python 3.13 --group build packaging/build.py`; a `v*` tag publishes a GitHub Release
+  (zip, `.sha256`, notes from `packaging/release-notes.md`), a manual run only uploads the zip as
+  a run artifact. To release: set the same version in `pyproject.toml` and `__version__`
+  (`build.py` refuses a mismatch, and a tag that isn't `v<version>`), commit, `git tag
+  v<version>`, push the commit and the tag.
+- **Tested (2026-10-21, Linux build of the same bundle):** build and self-check pass (65 MB zip,
+  117 MB unpacked); started from another folder with no `settings.txt` it created one, showed
+  "settings from settings.txt", put `runs/` next to the app, connected with the bundled adb and
+  stopped via its own `runs/STOP`; the connect wizard (skip pairing, wrong port → retry, right
+  port → "Ready"). **Not yet tried:** the Windows build itself (GitHub runner), and the zip on a
+  Windows PC — SmartScreen, Defender, `Connect phone.bat`, the window staying open, USB.
 
 **In a container (Docker or Podman — no Python on the host):** see `CONTAINER.md`.
 Image `feed-autoplay` (named in `compose.yaml`; the code is copied in, so rebuild after code
@@ -207,6 +246,8 @@ android-instagram-tools/
 ├── android_instagram/            shared (device, logwatch, keys, stats, ui, …)
 │   └── feed_autoplay/            this tool → python -m android_instagram.feed_autoplay
 ├── tools/                        dev tools, per tool
+├── packaging/                    the Windows app: spec, build.py, files for the zip (1)
+├── .github/workflows/            windows-release.yml: builds and publishes the zip on v* tags
 ├── tests/                        checks without a phone (test_ui_text.py 4.12, test_pause_stats.py 4.10)
 └── Dockerfile, compose.yaml, README.md, DEVELOPMENT.md, CONTAINER.md
 ```
@@ -1172,6 +1213,11 @@ repost"** message, and every repost tap was refused → repost refusal detection
 - Native Windows (uv, `run.bat`): tested on Windows 11 over Wi-Fi (keys, `stop.bat`); USB with
   the vendor driver and `pause.bat` (added later) are not tried yet.
 
+- Windows app (`packaging/`): built only on GitHub's Windows runner so far and not yet run on a
+  Windows PC; unsigned, so SmartScreen warns on first start and antivirus may flag it (report
+  false positives to Microsoft). Updating over a running adb server fails on the locked
+  `adb.exe`: `feed_autoplay.exe adb kill-server` first.
+
 - Container runs (CONTAINER.md): Wi-Fi debugging only; if the phone restarts mid-run its
   wireless-debugging port changes and the app can't reconnect on its own (new `PHONE` needed);
   untested on Windows/Podman.
@@ -1209,6 +1255,12 @@ repost"** message, and every repost tap was refused → repost refusal detection
   Instagram accounts from the feed or the owner's time zone (they were replaced on 2026-10-20,
   e.g. serial `R58N91XKQZT`, `192.168.1.23:41235`, `chef.marco`). Copy log excerpts into docs
   only after replacing real names. Run data (`runs/`, `.env`) is git-ignored.
+- **Pushing `.github/workflows/` needs a token with the `workflow` scope:** GitHub refuses a
+  push that adds or changes a workflow with a personal access token without it ("refusing to
+  allow a Personal Access Token to create or update workflow"). Add the scope to the token (or
+  use a fine-grained token with "Workflows: write").
+- **Release = version + tag:** `pyproject.toml`, `feed_autoplay.__version__` and the tag
+  `v<version>` must agree, or `packaging/build.py` stops the release build.
 - **The stop and pause files are shared:** every running instance in the folder watches
   `runs/STOP` and `runs/PAUSE`. Tests
   must not create the real one while a real run may be active — point the test at another path

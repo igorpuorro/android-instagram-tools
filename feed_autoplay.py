@@ -18,8 +18,13 @@ Without keys (background runs): create the file runs/STOP to stop cleanly (stop.
 while the file runs/PAUSE exists the run is paused (pause.bat on Windows toggles it).
 
 Run with uv (sets up Python and the packages by itself): uv run feed_autoplay.py --help
+Windows app (packaging/): feed_autoplay.exe, options from settings.txt next to it.
+
+Helper commands (instead of options): connect (guided phone pairing / connecting),
+adb <arguments> (the bundled adb), check (are all bundled files there?).
 """
 import argparse
+import importlib.resources
 import os
 import re
 import signal
@@ -27,9 +32,20 @@ import subprocess
 import sys
 import threading
 import time
+import traceback
 from pathlib import Path
 
+__version__ = "0.2.0"  # same as pyproject.toml; the Windows release tag is v<version>
+
 WINDOWS = os.name == "nt"
+# Running as the Windows app built by PyInstaller (packaging/, DEVELOPMENT.md 1): the bundled
+# files are in its _internal folder, and runs/ and settings.txt sit next to the exe. Run as a
+# script, everything stays as before (assets next to this file, runs/ in the current folder).
+FROZEN = getattr(sys, "frozen", False)
+BUNDLE_DIR = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
+APP_DIR = Path(sys.executable).resolve().parent if FROZEN else Path(__file__).resolve().parent
+RUNS = APP_DIR / "runs" if FROZEN else Path("runs")
+SETTINGS_FILE = APP_DIR / "settings.txt"  # read by the Windows app when it gets no options
 if WINDOWS:
     import msvcrt
 else:
@@ -39,6 +55,11 @@ else:
 
 import adbutils
 import numpy as np
+
+if FROZEN and not os.environ.get("ADBUTILS_ADB_PATH"):
+    # always the bundled adb (not another one on PATH): one known version for the app and helpers
+    os.environ["ADBUTILS_ADB_PATH"] = str(BUNDLE_DIR / "adbutils" / "binaries"
+                                          / ("adb.exe" if WINDOWS else "adb"))
 import uiautomator2 as u2
 from uiautomator2.exceptions import UiObjectNotFoundError
 
@@ -90,7 +111,7 @@ def has_any(text, key):
 # Shapes of the full-screen player's white icons (116x116, recorded on this phone, see
 # DEVELOPMENT.md 4.7): the like heart's outline, and the parts of the repost icon that change
 # when it's on (arrowhead tips vanish, a checkmark appears).
-ICON_MASKS = dict(np.load(Path(__file__).resolve().parent / "assets" / "icon_masks.npz"))
+ICON_MASKS = dict(np.load(BUNDLE_DIR / "assets" / "icon_masks.npz"))
 CLIPS_VIEWER = RID + "clips_viewer_container"
 FEED_LIST = "android:id/list"
 
@@ -139,9 +160,9 @@ class Keys:
 
 # Creating this file stops a run cleanly (final statistics), on any system and without a
 # terminal: background runs, Windows (no SIGTERM there; stop.bat creates it).
-STOP_FILE = Path("runs") / "STOP"
+STOP_FILE = RUNS / "STOP"
 # While this file exists the run is paused (same as key p): pause.bat toggles it on Windows.
-PAUSE_FILE = Path("runs") / "PAUSE"
+PAUSE_FILE = RUNS / "PAUSE"
 # resuming in place needs the paused frame unchanged (mean grey-level difference, 0-255)
 PAUSE_SAME_FRAME = 4.0
 
@@ -179,7 +200,7 @@ LIKE_MODES = ["none", "followed", "all"]
 REPOST_MODES = ["none", "followed", "all"]
 SAVE_MODES = ["none", "followed", "all"]
 SHARE_MODES = ["none", "followed", "all"]
-SHARED_LINKS = Path("runs") / "shared-links.txt"  # every copied link is appended here
+SHARED_LINKS = RUNS / "shared-links.txt"  # every copied link is appended here
 # mode keys: key -> (args attribute, label, cycle, note)
 SPEED_MODES = ["off", "on"]  # key x: 2x speed (--2x sets the start value)
 MODE_KEYS = {
@@ -836,11 +857,12 @@ class Player:
         """A video that hits --max-watch is either really long or a loop both end signals
         missed; the log can't tell which. Save what was seen so tools/period.py can."""
         try:
-            Path("runs").mkdir(exist_ok=True)
-            fn = Path("runs") / f"maxwatch-{time.strftime('%Y%m%d-%H%M%S')}.npz"
+            RUNS.mkdir(exist_ok=True)
+            fn = RUNS / f"maxwatch-{time.strftime('%Y%m%d-%H%M%S')}.npz"
             np.savez_compressed(fn, t=np.array([t for t, _ in history]),
                                 f=np.array([f for _, f in history]))
             how = (f"docker compose run --rm app tool period.py {fn}" if os.environ.get("FEED_AUTOPLAY_CONTAINER")
+                   else f"{fn} (analyse it with tools/period.py, DEVELOPMENT.md 4.5)" if FROZEN
                    else f"uv run tools/period.py {fn}")
             log(f"  frames saved for diagnosis: {how}")
         except Exception as e:  # diagnostics must never break a run
@@ -1318,7 +1340,7 @@ class Player:
             log("  not saved: saving is only implemented in the full-screen player")
 
 
-def startup_report(d, args, keys_on):
+def startup_report(d, args, keys_on, settings_from=None):
     """Startup block (same style as the stats and help): phone, Instagram version, settings."""
     def prop(name):
         try:
@@ -1334,7 +1356,8 @@ def startup_report(d, args, keys_on):
         insta = m.group(1) if m else "?"
     except Exception:
         insta = "?"
-    log("── feed_autoplay " + "─" * 47)
+    head = f"── feed_autoplay {__version__} "
+    log(head + "─" * (64 - len(head)))
     log(f"   phone      {phone}" + (f" · Android {android}" if android else "") + f" · serial {hw} · {link}")
     if insta in TESTED_INSTAGRAM:
         log(f"   instagram  {insta}")
@@ -1346,6 +1369,8 @@ def startup_report(d, args, keys_on):
         f"max {args.max_watch:g} s per video{extra}")
     log(f"   actions    like {args.like} · repost {args.repost} · copy link {args.share_link} · "
         f"save {args.save}")
+    if settings_from:
+        log(f"   settings   from {settings_from}")
     log(f"   end        " + ("Instagram's log + frame comparison" if args.use_log else "frame comparison only (--no-log)"))
     stop = "stop.bat or create runs\\STOP" if WINDOWS else "Ctrl-C, kill <pid> or create runs/STOP"
     pause = "pause.bat" if WINDOWS else "create / delete runs/PAUSE"
@@ -1362,6 +1387,9 @@ def pick_serial():
     """
     entries = [d for d in adbutils.adb.device_list() if d.get_state() == "device"]
     if not entries:
+        if FROZEN:
+            sys.exit("no phone connected: plug it in over USB (USB debugging on), or run "
+                     "\"Connect phone.bat\" for Wi-Fi")
         sys.exit("no device connected (check `adb devices`; for Wi-Fi: adb connect <ip>:<port>)")
     phones = {}
     for d in entries:
@@ -1370,6 +1398,165 @@ def pick_serial():
         listing = "\n".join(f"  {hw}: {', '.join(serials)}" for hw, serials in phones.items())
         sys.exit(f"more than one phone connected, pick one with -s <serial>:\n{listing}")
     return entries[0].serial
+
+
+# ---- helper commands: `feed_autoplay.py <command>` / `feed_autoplay.exe <command>` -------------
+def run_adb(argv):
+    """The bundled adb with the given arguments (what tools/adb.py does for uv runs)."""
+    return subprocess.call([adbutils.adb_path(), *argv])
+
+
+def adb_output(*argv):
+    r = subprocess.run([adbutils.adb_path(), *argv], capture_output=True, text=True, errors="replace")
+    return (r.stdout + r.stderr).strip()
+
+
+def connected_phones():
+    """adb serials in the "device" state (ready to use)."""
+    return [line.split("\t")[0] for line in adb_output("devices").splitlines()
+            if line.rstrip().endswith("\tdevice")]
+
+
+def ask(prompt, pattern=None, example=""):
+    """Ask until the answer matches `pattern` (empty answer: None)."""
+    while True:
+        answer = input(prompt).strip()
+        if not answer or not pattern or re.fullmatch(pattern, answer):
+            return answer or None
+        print(f"  that doesn't look right{' -- e.g. ' + example if example else ''}")
+
+
+def connect_wizard(argv):
+    """Guided pairing and connecting over Wi-Fi debugging (USB needs none of this)."""
+    ip_port = r"\d{1,3}(\.\d{1,3}){3}:\d{2,5}"
+    print("Connect the phone over Wi-Fi (Wireless debugging).")
+    print("Phone and computer must be on the same Wi-Fi network. Over USB nothing is needed here:")
+    print("plug the phone in with USB debugging on and accept the prompt on the phone.\n")
+    phones = connected_phones()
+    if phones:
+        print("Already connected: " + ", ".join(phones))
+        if (input("Connect again anyway? [y/N] ").strip().lower() or "n")[0] != "y":
+            return 0
+    print("On the phone: Settings > Developer options > Wireless debugging (switch it on).\n")
+    print("1) Pairing -- needed once per computer (skip with Enter if it was paired before).")
+    print("   Tap \"Pair device with pairing code\": it shows an IP address & port and a 6-digit code.")
+    pair = ask("   Pairing IP address & port: ", ip_port, "192.168.1.23:37105")
+    if pair:
+        code = ask("   Pairing code: ", r"\d{6}", "482915")
+        if code:
+            out = adb_output("pair", pair, code)
+            print("   " + out.replace("\n", "\n   "))
+            if "success" not in out.lower():
+                print("   Pairing failed: check the numbers (the code changes each time the dialog opens).")
+                return 1
+    print("\n2) Connecting -- the IP address & Port at the top of the Wireless debugging screen")
+    print("   (not the pairing one).")
+    while True:
+        addr = ask("   IP address & Port (Enter to skip): ", ip_port, "192.168.1.23:41235")
+        if not addr:
+            break
+        out = adb_output("connect", addr)
+        print("   " + out)
+        if re.search(r"\bconnected to\b", out) and "failed" not in out:
+            time.sleep(1)
+            break
+        print("   Not connected: check the IP address & Port (it changes when Wireless debugging is"
+              " switched on again or the phone restarts).")
+    phones = connected_phones()
+    listing = adb_output("devices")
+    if phones:
+        print("\nReady: " + ", ".join(phones) + " -- now start feed_autoplay.")
+        return 0
+    print("\nNot connected yet. adb sees:\n" + listing)
+    if "unauthorized" in listing:
+        print("The phone is asking for permission: accept \"Allow debugging?\" on its screen, then try again.")
+    else:
+        print("Check that Wireless debugging is on and both are on the same network, then try again.")
+    return 1
+
+
+def self_check(argv):
+    """Are all bundled files there? (used by the Windows build, useful for troubleshooting)"""
+    problems = []
+    print(f"feed_autoplay {__version__} · Python {sys.version.split()[0]} · "
+          f"{'app (' + str(APP_DIR) + ')' if FROZEN else 'script'}")
+    try:
+        print(f"  icon masks  {len(ICON_MASKS)} shapes")
+    except Exception as e:
+        problems.append(f"icon masks: {e}")
+    for name in ("assets/u2.jar", "assets/app-uiautomator.apk"):
+        with importlib.resources.as_file(importlib.resources.files("uiautomator2") / name) as f:
+            if f.exists():
+                print(f"  uiautomator2 {name} ({f.stat().st_size // 1024} KB)")
+            else:
+                problems.append(f"uiautomator2 {name} missing")
+    try:
+        adb = adbutils.adb_path()
+        first = adb_output("version").splitlines()[:1]
+        print(f"  adb         {adb} ({first[0] if first else '?'})")
+    except Exception as e:
+        problems.append(f"adb: {e}")
+    print(f"  runs        {RUNS.resolve()}")
+    for p in problems:
+        print("  PROBLEM: " + p)
+    print("all files present" if not problems else f"{len(problems)} problem(s)")
+    return 1 if problems else 0
+
+
+COMMANDS = {"connect": connect_wizard, "adb": run_adb, "check": self_check}
+
+
+def settings_args():
+    """Options from settings.txt (Windows app, when started without options): words of each
+    line, `#` starts a comment."""
+    words = []
+    for line in SETTINGS_FILE.read_text(encoding="utf-8-sig").splitlines():
+        words += line.split("#", 1)[0].split()
+    return words
+
+
+def owns_console():
+    """Windows app started by a double-click: the console window belongs to it alone (from a
+    terminal, the terminal's shell shares it) -- then it must not close before it can be read."""
+    if not (FROZEN and WINDOWS):
+        return False
+    try:
+        import ctypes
+        return ctypes.windll.kernel32.GetConsoleProcessList((ctypes.c_uint * 2)(), 2) <= 1
+    except Exception:
+        return False
+
+
+def entry():
+    """Start: a helper command or the app; the Windows app's own window waits for Enter at the end."""
+    # the log uses symbols/emoji: make sure they can be written even to a redirected file or an
+    # old Windows console (code page), instead of crashing
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
+    code = 0
+    try:
+        if len(sys.argv) > 1 and sys.argv[1] in COMMANDS:
+            code = COMMANDS[sys.argv[1]](sys.argv[2:])
+        else:
+            main()
+    except SystemExit as e:
+        code = e.code
+        if isinstance(code, str):
+            print(code, file=sys.stderr)
+            code = 1
+    except Exception:
+        traceback.print_exc()
+        code = 1
+    if owns_console():
+        print("\nfeed_autoplay has stopped -- press Enter to close this window.")
+        try:
+            input()
+        except (EOFError, KeyboardInterrupt):
+            pass
+    sys.exit(code)
 
 
 def main():
@@ -1418,15 +1605,19 @@ def main():
     g.add_argument("--static-watch", type=float, default=45,
                    help="seconds to show a video with no detectable motion before moving on")
     g.add_argument("--max-scrolls", type=int, default=40, help="scrolls without a video before refreshing")
-    args = p.parse_args()
-
-    # the log uses symbols/emoji: make sure they can be written even to a redirected file or an
-    # old Windows console (code page), instead of crashing
-    for stream in (sys.stdout, sys.stderr):
+    settings_from = None
+    argv = sys.argv[1:]
+    if FROZEN and not argv and not SETTINGS_FILE.exists():
+        # first start: the defaults, to edit (not in the zip, so an update never overwrites it)
         try:
-            stream.reconfigure(encoding="utf-8", errors="replace")
-        except (AttributeError, ValueError):
+            SETTINGS_FILE.write_bytes((BUNDLE_DIR / "settings.txt").read_bytes())
+            print(f"created {SETTINGS_FILE.name} with the default options -- edit it with Notepad")
+        except OSError:
             pass
+    if FROZEN and not argv and SETTINGS_FILE.exists():
+        argv, settings_from = settings_args(), SETTINGS_FILE.name
+    args = p.parse_args(argv)
+
     for f in (STOP_FILE, PAUSE_FILE):  # left over from an earlier run: must not stop/pause this one
         try:
             f.unlink()
@@ -1434,7 +1625,7 @@ def main():
             pass
 
     d = u2.connect(args.serial or pick_serial())
-    startup_report(d, args, keys_on=sys.stdin.isatty())
+    startup_report(d, args, keys_on=sys.stdin.isatty(), settings_from=settings_from)
     # `kill <pid>` and `docker/podman stop` send SIGTERM, which would end Python without the
     # final statistics: treat it like Ctrl-C (SIGINT)
     signal.signal(signal.SIGTERM, signal.default_int_handler)
@@ -1454,4 +1645,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    entry()

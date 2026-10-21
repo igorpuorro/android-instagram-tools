@@ -1,0 +1,46 @@
+# Builds the Windows app (one-folder zip, packaging/build.py; DEVELOPMENT.md 1, "Windows app").
+# On a version tag (v0.2.0 = the version in pyproject.toml and feed_autoplay.py) it publishes a
+# GitHub Release with the zip and its SHA-256; run by hand (Actions tab) it only builds, and the
+# zip is downloadable from the run's artifacts.
+name: windows-release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write  # create the release
+
+jobs:
+  build:
+    runs-on: windows-latest
+    env:
+      PYTHONUTF8: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+
+      # the exact package versions of uv.lock (--frozen), Python 3.13 like the tested setup;
+      # build.py also self-checks the app (check, --help, adb version) and the bundle contents
+      - name: Build and check the app
+        run: uv run --frozen --python 3.13 --group build packaging/build.py
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: feed_autoplay-windows
+          path: |
+            build/feed_autoplay-windows-*.zip
+            build/feed_autoplay-windows-*.zip.sha256
+
+      - name: Publish the release
+        if: github.ref_type == 'tag'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $files = Get-ChildItem build/feed_autoplay-windows-*.zip, build/feed_autoplay-windows-*.zip.sha256
+          gh release create "$env:GITHUB_REF_NAME" $files.FullName `
+            --title "feed_autoplay $env:GITHUB_REF_NAME for Windows" `
+            --notes-file packaging/release-notes.md
