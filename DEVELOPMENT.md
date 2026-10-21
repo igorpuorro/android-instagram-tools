@@ -29,6 +29,7 @@ Contents
    - 4.9 [Device connection](#49-device-connection)
    - 4.10 [Keyboard controls](#410-keyboard-controls)
    - 4.11 [Statistics and pace estimate](#411-statistics-and-pace-estimate)
+   - 4.12 [Languages](#412-languages) — English and Brazilian Portuguese
 5. [How things were tested (and how to re-test)](#5-how-things-were-tested-and-how-to-re-test)
 6. [Known limitations and ideas](#6-known-limitations-and-ideas)
 7. [Pitfalls checklist](#7-pitfalls-checklist)
@@ -199,6 +200,7 @@ android-instagram-tools/
 ├── android_instagram/            shared (device, logwatch, keys, stats, ui, …)
 │   └── feed_autoplay/            this tool → python -m android_instagram.feed_autoplay
 ├── tools/                        dev tools, per tool
+├── tests/                        checks without a phone (test_ui_text.py, 4.12)
 └── Dockerfile, compose.yaml, README.md, DEVELOPMENT.md, CONTAINER.md
 ```
 
@@ -868,7 +870,86 @@ skipped and such gaps are left out of the cycles, as the app does. It imports th
 
 ---
 
+### 4.12 Languages
+
+The tool reads Instagram's own texts (content-descs, labels, hints) to find video posts, tell
+followed from suggested accounts, read the like state, counts, the 2x hints, the share sheet and
+the snackbars. Instagram translates them with the **app language** (Instagram → Settings →
+Language), which can differ from the phone's system language. Supported: **English** (the
+original, UK; US English too) and **Brazilian Portuguese** (pt-BR, added 2026-10-21). Resource IDs
+(`row_feed_profile_header`, `clips_author_username`, `inline_follow_button`, …) don't change
+with the language — only texts do.
+
+**Design: one table, English untouched.** All texts live in `UI_TEXT` (and the count regexes in
+`COUNTS`) at the top of `feed_autoplay.py`. Each entry lists English first, exactly as before,
+then the other languages; every check accepts *any* entry (`has_any()`, or a regex alternation
+built from the table). So adding a language only widens a check — it can't change what an
+English screen matches, unless the new text happens to appear on an English screen (keep
+translations specific, e.g. "postou um video", not "video"). There is no language setting and
+no detection: a run can't break because a language was guessed wrong.
+
+| Key | English | pt-BR | Where |
+|---|---|---|---|
+| `home_tab` | Home | Página inicial | Home tab content-desc (`HOME_TAB` regex) |
+| `video_post` | posted a video | postou um video / vídeo | feed post header |
+| `sponsored` | Sponsored | Patrocinado *(assumed, no ad seen)* | ad header |
+| `suggested` | Suggested for you | Sugestões para você | header `secondary_label` |
+| `speed_locked` / `speed_unlocked` | …normal speed / …lock 2X speed (US: …lock 2x speed) | …voltar à velocidade normal / …ativar a velocidade 2x | 2x hint while holding (4.4) |
+| `followed_by` | Followed by | Seguido(a) por | player: suggested account (4.6) |
+| `like_unliked` | Like | Curtir | like label (stays the same when liked; `selected` flips) |
+| `copy_link` / `copied` | Copy link / Copied | Copiar link / Copiado | share sheet (4.7d) |
+| `reposted` | Reposted | Repostado | snackbar after Repost (4.7b) |
+| `REFUSED` | unable, couldn't, can't, try again | não foi possível, tente novamente | repost refusal |
+| `COUNTS` | The like number is 1,204 (US: Like number is 1,204) · Reposted 6592 times · Save number is 39 | O número de curtidas é 2.118 · Repostado 49 vezes · O número de salvamentos é 19.103 | exact counts (safety nets) |
+
+Other language-dependent spots in the code:
+- **Post time** (`post_id`, dedupe): English "… 5 hours ago" / "… in Lisbon on 1 day ago";
+  pt-BR "… em Há 7 horas" (also "há"), "… em Lisboa em Há 2 dias", and older posts with a date
+  ("… em 10 de outubro", handled like English dates: no tolerance) — `AGO_PT` / `PT_UNIT`.
+- **Collab authors** in the player: "a and 2 others" / "a and b" vs "a e mais 2" / "a e b".
+- **Numbers:** pt-BR uses "." for thousands and "," for decimals; abbreviated values
+  ("18.5K", "1,2 mil") aren't exact, so the count safety nets skip them (as before).
+- Labels that are the same in both: the Repost button ("Repost"), "Liked" in the English feed.
+
+Texts also differ *within* a language: the tool was written with Instagram in **UK English**;
+**US English** (Instagram's default English) says "Slide down to lock 2x speed" (lowercase x,
+UK "2X") and "Like number is …" (UK "The like number is …"), and writes dates "October 7"
+(UK "7 October"; both are treated as absolute dates). The first US run played every video at
+1x ("could not switch to 2x") until the US spelling was added. Everything else checked is the
+same (Like, Repost, "Reposted N times", "Save number is N", Share, Home, Follow). When a check
+suddenly fails on every video, open the screen and dump it before suspecting the logic.
+
+Findings on the pt-BR screens: Save shows a snackbar ("Salvo" + "Adicionar à coleção"), not a
+sheet, as in English; reposts were still refused ("Não foi possível repostar"), caught by text
+and icon; a new player element `scrubber` ("Barra de pesquisa") appeared (see 6). Not seen in
+pt-BR yet, so taken from the obvious translation or left English-only: ads ("Patrocinado"), a
+collab author line, the feed's liked label.
+
+**How it was tested.**
+1. *English unchanged* — a differential test ran the code from before the change and the new
+   code side by side on the English inputs of every changed function (headers, ads,
+   suggestions, post times, counts, collab/followed checks, like labels, hints, refusal and
+   Home texts): 89 checks, 0 differences.
+2. *pt-BR offline* — the same functions on real pt-BR screen dumps (feed, player, share sheet,
+   save): 62/62.
+3. *pt-BR live* — 12 min `--play followed --2x --like followed --share-link followed`: 11 played,
+   10 liked, 10 links copied, 7 suggested skipped, ends from the log 5 / from frames 5, 0
+   errors; headers with dates and locations were handled.
+4. **`tests/test_ui_text.py`** keeps 1 and 2 as a permanent check without the private dumps
+   (made-up accounts, texts as recorded): `uv run tests/test_ui_text.py`. Run it after any
+   change to the texts; it fails if an English expectation changes (checked: removing
+   "posted a video" makes 8 checks fail).
+
+**Adding a language:** switch Instagram's language; dump the feed, the player (with the 2x hint
+showing), the share sheet and the snackbars (5, "Diagnostics"); append each text to its
+`UI_TEXT` entry (after the existing ones), add `COUNTS` patterns with that language's
+thousands separator, extend `post_id` if the time label has another shape, add cases to
+`tests/test_ui_text.py`, run it, then a short live run with `--like none` first.
+
 ## 5. How things were tested (and how to re-test)
+
+**Without a phone.** `uv run tests/test_ui_text.py` checks all language-dependent text
+matching, English and pt-BR (4.12).
 
 **Live runs.** Run the script for a few minutes with `timeout -s INT 300 … < /dev/null > log`
 and read the log. To test keys without a person at the keyboard, feed them through a
@@ -1034,8 +1115,11 @@ repost"** message, and every repost tap was refused → repost refusal detection
 - Collab posts count as followed (see 4.6).
 - Instagram rate-limits reposts (4.7b); `--repost all` on a long run hits it. Likes may have a
   limit too — no refusal message for likes has been seen so far.
-- All IDs/texts were found on Instagram 450/451 in English; an update or another UI language
-  can break them (`posted a video`, `Slide down to lock 2X speed`, `Followed by `, `Like`, …).
+- All IDs/texts were found on Instagram 450/451 in English (UK and US) and Brazilian Portuguese (4.12); an
+  update or another app language can break them — add the texts to `UI_TEXT`. pt-BR ads, collab
+  lines and the feed's liked label weren't seen yet.
+- Idea: the player's `scrubber` element (pt-BR "Barra de pesquisa", seen on 451) may expose the
+  playback position — a possible end-of-video signal better than frame comparison (4.5).
 - `--loops > 1` has not been exercised much.
 
 ## 7. Pitfalls checklist

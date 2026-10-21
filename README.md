@@ -263,7 +263,8 @@ of videos that hit the time limit (`maxwatch-*.npz`).
   notices, doesn't count it, and pauses reposting (30 min, longer if it repeats).
   `--repost followed` is much gentler than `all`.
 - **Tested on** a Samsung Galaxy phone (Android 11, 1080×2340 screen) with Instagram 451, in
-  English. Another phone, screen size, Instagram version or language may need adjustments — it
+  **English** (UK and US) and **Brazilian Portuguese** (Instagram's app language; the phone's own language
+  doesn't matter). Another phone, screen size, Instagram version or language may need adjustments — it
   warns at startup when the Instagram version is one it wasn't tested with.
 - **Wi-Fi debugging:** the phone's port changes when wireless debugging is switched on again or
   the phone restarts; reconnect with the new one.

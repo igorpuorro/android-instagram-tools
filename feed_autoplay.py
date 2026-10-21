@@ -49,6 +49,43 @@ RID = PKG + ":id/"
 TESTED_INSTAGRAM = ("450.0.0.50.77", "451.0.0.53.80")
 
 HEADER = RID + "row_feed_profile_header"
+
+# Instagram UI texts the tool relies on, per app language (DEVELOPMENT.md 4.12). English is the
+# original (UK English; US English differs in a few texts) and is listed first, unchanged; Brazilian Portuguese (pt-BR) was recorded on
+# Instagram 451 with the phone's system language left in English. Every check accepts any of
+# the listed texts, so adding a language never changes how another one is matched.
+UI_TEXT = {
+    "home_tab": ("Home", "Página inicial"),                          # content-desc of the Home tab
+    "video_post": ("posted a video", "postou um video", "postou um vídeo"),  # feed post header
+    "sponsored": ("Sponsored", "Patrocinado"),                       # header of an ad
+    "suggested": ("Suggested for you", "Sugestões para você"),       # secondary_label in a header
+    "speed_locked": ("normal speed", "velocidade normal"),           # hint while holding, 2x locked
+    "speed_unlocked": ("lock 2X speed", "lock 2x speed",             # hint while holding, not locked
+                       "ativar a velocidade 2x"),                    # (English UK "2X", US "2x")
+    "followed_by": ("Followed by ", "Seguido por ", "Seguida por "), # player: suggested account
+    "like_unliked": ("Like", "Curtir"),                              # like button label, not liked
+    "copy_link": ("Copy link", "Copiar link"),                       # share sheet button
+    "copied": ("Copied", "Copiado"),                                 # after Copy link
+    "reposted": ("Reposted", "Repostado"),                           # snackbar after Repost
+}
+# Exact counts in the player, per language: (regex capturing the number, thousands separator).
+# English is the original pattern; abbreviated values ("18.5K", "1,2 mil") are not exact.
+COUNTS = {
+    "like": ((r'content-desc="(?:The like|Like) number is ([\d,]+(?:\.\d+)?[KM]?)', ","),  # UK / US
+             (r'content-desc="O número de curtidas é (\d+(?:\.\d{3})*(?:,\d+)?(?: ?mil| ?mi)?)', ".")),
+    "repost": ((r'content-desc="Reposted ([\d,]+(?:\.\d+)?[KM]?) times?"', ","),
+               (r'content-desc="Repostado (\d+(?:\.\d{3})*(?:,\d+)?(?: ?mil| ?mi)?) vez(?:es)?"', ".")),
+    "save": ((r'content-desc="Save number is ([\d,]+(?:\.\d+)?[KM]?)', ","),
+             (r'content-desc="O número de salvamentos é (\d+(?:\.\d{3})*(?:,\d+)?(?: ?mil| ?mi)?)', ".")),
+}
+# refusal messages in the snackbar (repost, save)
+REFUSED = r"(?i).*(unable|couldn.t|can.t|try again|não foi possível|tente novamente).*"
+HOME_TAB = "^(" + "|".join(re.escape(t) for t in UI_TEXT["home_tab"]) + ")$"
+
+
+def has_any(text, key):
+    """True if any of the languages' texts for `key` occurs in `text`."""
+    return any(t in text for t in UI_TEXT[key])
 # Shapes of the full-screen player's white icons (116x116, recorded on this phone, see
 # DEVELOPMENT.md 4.7): the like heart's outline, and the parts of the repost icon that change
 # when it's on (arrowhead tips vanish, a checkmark appears).
@@ -376,7 +413,7 @@ class Player:
         return self.d(resourceId=CLIPS_VIEWER).exists
 
     def in_feed(self):
-        return self.d(resourceId=FEED_LIST).exists and self.d(packageName=PKG, description="Home", selected=True).exists
+        return self.d(resourceId=FEED_LIST).exists and self.d(packageName=PKG, descriptionMatches=HOME_TAB, selected=True).exists
 
     def scroll(self, frac=0.55, settle=1.0):
         y0 = int(self.h * 0.75)
@@ -395,7 +432,7 @@ class Player:
             if self.in_viewer():
                 self.d.press("back")
             else:
-                home = self.d(packageName=PKG, description="Home")
+                home = self.d(packageName=PKG, descriptionMatches=HOME_TAB)
                 if home.exists:
                     home.click()
                 else:
@@ -409,16 +446,20 @@ class Player:
     HEADER_NODE = re.compile(r'<node [^>]*resource-id="' + re.escape(HEADER) + r'"[^>]*>')
     # signs that a post comes from an account you don't follow: a "Follow" button or a
     # "Suggested for you" label inside the post header
+    _SUGGESTED = "(?:" + "|".join(re.escape(t) for t in UI_TEXT["suggested"]) + ")"
     NOT_FOLLOWED_NODE = re.compile(
         r'<node [^>]*(?:resource-id="' + re.escape(RID + "inline_follow_button") + r'"'
-        r'|content-desc="Suggested for you" [^>]*resource-id="' + re.escape(RID + "secondary_label") + r'"'
-        r'|resource-id="' + re.escape(RID + "secondary_label") + r'" [^>]*content-desc="Suggested for you")[^>]*>')
+        r'|content-desc="' + _SUGGESTED + r'" [^>]*resource-id="' + re.escape(RID + "secondary_label") + r'"'
+        r'|resource-id="' + re.escape(RID + "secondary_label") + r'" [^>]*content-desc="' + _SUGGESTED + r'")[^>]*>')
 
     @staticmethod
     def _y_range(node):
         return tuple(map(int, re.search(r'bounds="\[\d+,(\d+)\]\[\d+,(\d+)\]"', node).groups()))
 
     AGO = re.compile(r"^(.*?) (?:on )?(\d+) (second|minute|hour|day|week)s? ago$")
+    # pt-BR: "x postou um video em Há 7 horas" (also "há", lower case)
+    AGO_PT = re.compile(r"^(.*?) em [Hh]á (\d+) (segundo|minuto|hora|dia|semana)s?$")
+    PT_UNIT = dict(segundo="second", minuto="minute", hora="hour", dia="day", semana="week")
     UNIT_MIN = dict(second=1 / 60, minute=1, hour=60, day=1440, week=10080)
 
     def post_id(self, desc):
@@ -426,9 +467,13 @@ class Player:
         The header's relative time label moves on while a post is watched ("23 minutes ago"
         -> "25 minutes ago"), so the text alone doesn't identify a post."""
         m = self.AGO.match(desc)
+        unit = m.group(3) if m else None
+        if not m:
+            m = self.AGO_PT.match(desc)
+            unit = self.PT_UNIT[m.group(3)] if m else None
         if not m:  # absolute dates ("7 October"): the text is stable
             return desc, None, 0
-        n, unit = int(m.group(2)), m.group(3)
+        n = int(m.group(2))
         posted = time.time() / 60 - n * self.UNIT_MIN[unit]
         return m.group(1), posted, max(3, self.UNIT_MIN[unit] * 1.1)  # label rounding
 
@@ -461,7 +506,7 @@ class Player:
         best = None
         for node in self.HEADER_NODE.findall(xml):
             desc = re.search(r'content-desc="([^"]*)"', node).group(1)
-            if "posted a video" not in desc or "Sponsored" in desc or self.is_seen(desc):
+            if not has_any(desc, "video_post") or has_any(desc, "sponsored") or self.is_seen(desc):
                 continue
             top, bottom = self._y_range(node)
             followed = not any(top <= y0 < bottom for y0, _ in not_followed)
@@ -527,9 +572,9 @@ class Player:
             else:
                 self.scroll()
         log("no video found after many scrolls; refreshing feed")
-        self.d(packageName=PKG, description="Home").click()  # scroll to top
+        self.d(packageName=PKG, descriptionMatches=HOME_TAB).click()  # scroll to top
         time.sleep(1)
-        self.d(packageName=PKG, description="Home").click()  # pull fresh
+        self.d(packageName=PKG, descriptionMatches=HOME_TAB).click()  # pull fresh
         time.sleep(4)
         self.seen.clear()
         return None
@@ -540,7 +585,7 @@ class Player:
         Returns True when the video plays at 2x.
 
         While held, Instagram shows a hint telling the current state:
-          "Slide down to lock 2X speed"  -> not locked yet: slide down to lock
+          "Slide down to lock 2X speed"  -> not locked yet: slide down to lock (US English: "2x")
           "Slide down for normal speed"  -> already locked: just release (sliding would undo it)
         """
         # left edge, upper third: clear of the like/comment column and of the caption
@@ -551,10 +596,10 @@ class Player:
             try:
                 time.sleep(1.2)
                 xml = self.d.dump_hierarchy()
-                if "normal speed" in xml:
+                if has_any(xml, "speed_locked"):
                     log("  ⏩ 2x already locked")
                     return True
-                if "lock 2X speed" in xml:
+                if has_any(xml, "speed_unlocked"):
                     for i in range(1, 11):
                         y_up = y + i * 40
                         self.d.touch.move(x, y_up)
@@ -692,17 +737,25 @@ class Player:
         """
         xml = self.d.dump_hierarchy()
         author = re.search(r'text="([^"]*)" resource-id="' + re.escape(RID + "clips_author_username"), xml)
-        if author and re.search(r" and (\d+ others|\S+)", author.group(1)):
+        # collab: "x and 2 others" / "x and y" (pt-BR expected: "x e mais 2" / "x e y"; usernames
+        # contain no spaces, so " e " only occurs between co-authors)
+        if author and re.search(r" (?:and|e) (\d+ others|mais \d+|\S+)", author.group(1)):
             return True
-        return RID + "inline_follow_button" not in xml and 'text="Followed by ' not in xml
+        return RID + "inline_follow_button" not in xml and not any(
+            f'text="{t}' in xml for t in UI_TEXT["followed_by"])
 
-    def exact_count(self, pattern):
-        """An exact number shown in the UI (e.g. "The like number is 304"), or None when
-        missing or abbreviated ("18.5K": a change of one isn't visible)."""
-        m = re.search(pattern, self.d.dump_hierarchy())
-        if not m or not re.fullmatch(r"[\d,]+", m.group(1)):
-            return None
-        return int(m.group(1).replace(",", ""))
+    def exact_count(self, kind):
+        """An exact number shown in the player (e.g. "The like number is 304" / "O número de
+        curtidas é 304"), or None when missing or abbreviated ("18.5K", "1,2 mil": a change
+        of one isn't visible). kind: "like", "repost" or "save" (COUNTS)."""
+        xml = self.d.dump_hierarchy()
+        for pattern, sep in COUNTS[kind]:
+            m = re.search(pattern, xml)
+            if m:
+                if not re.fullmatch(r"\d+(?:" + re.escape(sep) + r"\d{3})*", m.group(1)):
+                    return None
+                return int(m.group(1).replace(sep, ""))
+        return None
 
     def icon_white(self, bounds):
         """116x116 map of the pure-white pixels of a button's icon (the full-screen player's
@@ -725,27 +778,27 @@ class Player:
         liked; in the feed it becomes "Liked"), a label other than "Like", or -- in the
         full-screen player -- a heart without its white outline."""
         info = like.info
-        if info.get("selected") or info.get("contentDescription") != "Like":
+        if info.get("selected") or info.get("contentDescription") not in UI_TEXT["like_unliked"]:
             return True
         if not check_icon or not self.heart_looks_liked(info["bounds"]):
             return False
         time.sleep(1)  # only the icon says "liked": look once more before believing it
         return self.heart_looks_liked(info["bounds"])
 
-    def tap_like(self, like, count_pattern=None):
+    def tap_like(self, like, count_kind=None):
         """Tap a like button unless already liked; report the outcome. A like button is a
         toggle: tapping a liked post would remove the like, so check first. With
         count_pattern, the like count is compared before/after as a safety net."""
-        if self.is_liked(like, check_icon=count_pattern is not None):
+        if self.is_liked(like, check_icon=count_kind is not None):
             log("  ♥ already liked")
             return
-        before = self.exact_count(count_pattern) if count_pattern else None
+        before = self.exact_count(count_kind) if count_kind else None
         like.click()
         if self.wait_liked(like):
             log("  ♥ liked")
             self.stats["liked"] += 1
             return
-        after = self.exact_count(count_pattern) if count_pattern else None
+        after = self.exact_count(count_kind) if count_kind else None
         if before is not None and after is not None and after < before:
             # the checks said "not liked" but the count went down: it was liked and this
             # tap removed it -- put it back
@@ -768,7 +821,7 @@ class Player:
         while True:
             time.sleep(0.5)
             info = like.info
-            if info.get("selected") or info.get("contentDescription") != "Like":
+            if info.get("selected") or info.get("contentDescription") not in UI_TEXT["like_unliked"]:
                 return True
             if time.time() > end:
                 return False
@@ -776,7 +829,7 @@ class Player:
     def like_in_player(self):
         like = self.d(resourceId=RID + "like_button")
         if like.exists:
-            self.tap_like(like, count_pattern=r'content-desc="The like number is ([\d,]+(?:\.\d+)?[KM]?)')
+            self.tap_like(like, count_kind="like")
         else:
             log("  ♡ like button not found")
 
@@ -911,10 +964,11 @@ class Player:
             # leave it alone
             log("  repost skipped: icon state unclear (busy background)")
             return
-        count = r'content-desc="Reposted ([\d,]+(?:\.\d+)?[KM]?) times?"'
+        count = "repost"
         before = self.exact_count(count)
         btn.click()
-        if self.d(resourceId=RID + "snackbar_message", text="Reposted").wait(timeout=3):
+        if self.d(resourceId=RID + "snackbar_message",
+                  textMatches="^(" + "|".join(UI_TEXT["reposted"]) + ")$").wait(timeout=3):
             # "Reposted" is optimistic: when Instagram refuses (rate limit), the same bar turns
             # into "Unable to repost" ~5 s later and the icon/count revert. Confirm first.
             if self.repost_confirmed(btn, count, before):
@@ -961,14 +1015,14 @@ class Player:
         if btn.info.get("selected"):
             log("  🔖 already saved")
             return
-        count = r'content-desc="Save number is ([\d,]+(?:\.\d+)?[KM]?)'
+        count = "save"
         before = self.exact_count(count)
         btn.click()
         saved = False
         end = time.time() + 3
         while time.time() < end:
             time.sleep(0.5)
-            if self.d(resourceId=RID + "snackbar_message", textMatches=r"(?i).*(unable|couldn.t|can.t|try again).*").exists:
+            if self.d(resourceId=RID + "snackbar_message", textMatches=REFUSED).exists:
                 log("  ⚠ Instagram refused the save")
                 break
             if btn.info.get("selected"):
@@ -1005,7 +1059,8 @@ class Player:
         return False
 
     def share_sheet_open(self):
-        return 'content-desc="Copy link"' in self.d.dump_hierarchy()
+        xml = self.d.dump_hierarchy()
+        return any(f'content-desc="{t}"' in xml for t in UI_TEXT["copy_link"])
 
     def close_share_sheet(self):
         """Back closes the sheet -- but only press it while the sheet is showing: otherwise
@@ -1032,7 +1087,8 @@ class Player:
             log("  share button not found")
             return
         share.click()
-        copy = self.d(packageName=PKG, description="Copy link", clickable=True)
+        copy = self.d(packageName=PKG, descriptionMatches="^(" + "|".join(UI_TEXT["copy_link"]) + ")$",
+                      clickable=True)
         if not copy.wait(timeout=4):
             log("  no link copied: \"Copy link\" not found in the share sheet")
             self.close_share_sheet()
@@ -1042,7 +1098,7 @@ class Player:
         except Exception:
             before = None
         copy.click()
-        copied = self.d(packageName=PKG, text="Copied").wait(timeout=3)
+        copied = self.d(packageName=PKG, textMatches="^(" + "|".join(UI_TEXT["copied"]) + ")$").wait(timeout=3)
         link = None
         for _ in range(4):  # the clipboard can update a moment after "Copied"
             try:
@@ -1075,7 +1131,7 @@ class Player:
         within `window` s, or the icon ends up plain; True when the icon shows reposted."""
         end = time.time() + window
         while time.time() < end:
-            if self.d(resourceId=RID + "snackbar_message", textMatches=r"(?i).*(unable|couldn.t|can.t|try again).*").exists:
+            if self.d(resourceId=RID + "snackbar_message", textMatches=REFUSED).exists:
                 return False
             time.sleep(0.5)
         state = self.repost_state(btn.info["bounds"])
