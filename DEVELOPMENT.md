@@ -1087,7 +1087,7 @@ Commits follow [Conventional Commits 1.0](https://www.conventionalcommits.org/en
 
 <body: what changed and why — the reasoning a reader of `git log` needs>
 
-<footers: BREAKING CHANGE: …, Refs: …, Co-authored-by: …>
+<footers: BREAKING CHANGE: …, Refs: …>
 ```
 
 **Types**
@@ -1120,7 +1120,8 @@ project-wide changes (`docs: …`, `chore: …`).
   saved files (renamed or removed options, changed defaults that change behaviour, new required
   settings): `!` after the type/scope **and** a `BREAKING CHANGE:` footer saying what to do.
   Example: `feat(feed_autoplay)!: rename --no-like to --like none|followed|all`.
-- Changes made with an AI assistant carry a `Co-authored-by:` footer.
+- **No `Co-authored-by:` footer** — not even for changes made with an AI assistant (the
+  owner's choice for this repository). Assistants that add one by default must leave it out.
 
 **Before every commit — privacy** (see 7 and the Privacy section of `README.md`)
 - `git status` / `git diff --cached --stat`: no `runs/`, `.env`, `tools/traces*/`,
