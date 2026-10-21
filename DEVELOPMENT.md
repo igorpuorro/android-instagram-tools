@@ -102,6 +102,7 @@ At startup the app prints a block with the phone, the Instagram version and the 
    actions    like all · repost followed · copy link none · save none
    end        Instagram's log + frame comparison
    keys       press h for help
+────────────────────────────────────────────────────────────────
 ```
 
 `phone` comes from `getprop` (the hardware serial, not adb's Wi-Fi connection name), `Wi-Fi`/`USB`
@@ -755,6 +756,7 @@ with the current mode marked inside each key's cycle:
    info       s  statistics so far
               h  this help (also ?)
               q  quit
+────────────────────────────────────────────────────────────────
 ```
 
 **x (2x) applies from the next video**, unlike the modes below: the playing video keeps its
@@ -836,8 +838,11 @@ Logged every 20 played videos, on quit and on key **s** (`Player.report`):
    actions  liked 302 · reposted 0 (refused 0) · links copied 0 · saved 0
    ends     log 231 · frames 67 · static 1 · max-time 3
    waits    errors recovered 17 · locked 5h 14m · reconnecting 24m · paused 0m
+────────────────────────────────────────────────────────────────
 ```
 
+- Each block (startup, stats, help) starts with a header line and ends with a plain line of the
+  same width, so the log lines after it are clearly outside the block.
 - **header:** elapsed time; "active" = elapsed minus waits (lock screen, reconnect, pauses),
   shown once ≥ 1 min was spent waiting.
 - **pace:** the estimate below. **whole run:** the plain average (videos ÷ elapsed hours), and per

@@ -99,6 +99,12 @@ def log(msg):
     print(time.strftime("%H:%M:%S"), msg, end="\r\n", flush=True)
 
 
+def log_block_end():
+    """Closing line of a block (startup, stats, help), as wide as its header line: the log
+    lines that follow are clearly outside it."""
+    log("─" * 64)
+
+
 class Keys:
     """Non-blocking single-key reader for the terminal (termios on Linux/macOS, msvcrt on
     Windows). Inert when stdin isn't a terminal (background runs, pipes, tests)."""
@@ -336,6 +342,7 @@ class Player:
             f"max-time {s['end_max']}")
         log(f"   waits    errors recovered {s['errors']} · locked {self.hm(self.waited['locked'])} · "
             f"reconnecting {self.hm(self.waited['reconnect'])} · paused {self.hm(paused)}")
+        log_block_end()
 
     def locked(self):
         """Is the lock screen showing? ("screen on" alone can't tell: it is also on while
@@ -499,6 +506,7 @@ class Player:
         log(f"   info       s  statistics so far")
         log(f"              h  this help (also ?)")
         log(f"              q  quit")
+        log_block_end()
 
     def player_box(self, top=0.12):
         """Video area of the full-screen player, minus side buttons and caption."""
@@ -1342,6 +1350,7 @@ def startup_report(d, args, keys_on):
     stop = "stop.bat or create runs\\STOP" if WINDOWS else "Ctrl-C, kill <pid> or create runs/STOP"
     pause = "pause.bat" if WINDOWS else "create / delete runs/PAUSE"
     log(f"   keys       " + ("press h for help" if keys_on else f"off (no terminal) -- stop: {stop} · pause: {pause}"))
+    log_block_end()
 
 
 def pick_serial():
