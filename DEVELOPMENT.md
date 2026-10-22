@@ -192,7 +192,7 @@ and gets fewer antivirus false alarms.
   117 MB unpacked); started from another folder with no `settings.txt` it created one, showed
   "settings from settings.txt", put `runs/` next to the app, connected with the bundled adb and
   stopped via its own `runs/STOP`; the connect wizard (skip pairing, wrong port → retry, right
-  port → "Ready"). **On Windows:** the release builds of v0.2.0 and v0.2.1 passed on GitHub's
+  port → "Ready"). **On Windows:** the release builds of v0.2.0, v0.2.1 and v0.2.2 passed on GitHub's
   runner (self-check included; 43 MB zip with `adb.exe` + its DLLs); the owner ran the v0.2.0 zip
   on Windows 11 (2026-10-21): the exe and the `.bat` files (`Connect phone.bat` — now `connect.bat` — and `pause.bat`,
   `stop.bat`, removed in 0.2.2) worked over **USB** (vendor driver) and **Wi-Fi**. Not reported in detail: how
@@ -1232,7 +1232,8 @@ repost"** message, and every repost tap was refused → repost refusal detection
   driver not run through this route yet, but working in the Windows app on the same PC (same
   adb and driver).
 
-- Windows app (`packaging/`): tested on Windows 11 (v0.2.0, USB and Wi-Fi); unsigned, so
+- Windows app (`packaging/`): tested on Windows 11 (v0.2.0, USB and Wi-Fi); `disconnect.bat`
+  (v0.2.2) tested on Linux only (`disconnect` command), not yet on Windows; unsigned, so
   SmartScreen warns on first start and antivirus may flag it (report
   false positives to Microsoft). Updating over a running adb server fails on the locked
   `adb.exe`: `disconnect.bat` first.
