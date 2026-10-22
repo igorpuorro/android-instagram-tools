@@ -96,7 +96,7 @@ Keys while running (only when started from a terminal):
 At startup the app prints a block with the phone, the Instagram version and the settings:
 
 ```
-── feed_autoplay 0.2.1 ─────────────────────────────────────────
+── feed_autoplay 0.2.2 ─────────────────────────────────────────
    phone      Samsung SM-A515F · Android 11 · serial R58N91XKQZT · Wi-Fi
    instagram  451.0.0.53.80
    playback   play all · 2x on · max 300 s per video
@@ -114,9 +114,8 @@ line adds "⚠ untested version" — selectors, texts and icon masks (4.7) may n
 pause files instead.
 
 Unattended runs (keys don't work there — no terminal). Stop with `kill <pid>` (SIGTERM is handled
-like Ctrl-C), or by creating `runs/STOP` (any system; `stop.bat` on Windows) — either way the
-final statistics are printed. Pause by creating `runs/PAUSE`, resume by deleting it (`pause.bat`
-toggles it on Windows; 4.10):
+like Ctrl-C), or by creating `runs/STOP` (any system) — either way the final statistics are
+printed. Pause by creating `runs/PAUSE`, resume by deleting it (4.10):
 
 ```bash
 nohup uv run feed_autoplay.py --play all --2x --like all < /dev/null >> runs/longrun-<date>.log 2>&1 &
@@ -134,22 +133,23 @@ tools are scripts. Change dependencies with `uv add` / `uv lock` (and mirror the
 USB debugging or Wi-Fi debugging must be enabled on the phone; the screen must be unlocked.
 
 **Windows (native):** `run.bat` (= `uv run feed_autoplay.py %*`, checks that uv is installed,
-`chcp 65001`, keeps the window open at the end), `stop.bat` (creates `runs\STOP`) and
-`pause.bat` (creates / deletes `runs\PAUSE`: pause / resume); all are
-kept with CRLF line endings by `.gitattributes`. Code differences, all behind `WINDOWS = os.name ==
+`chcp 65001`, keeps the window open at the end); the `.bat` files are kept with CRLF line endings by `.gitattributes`. Code differences, all behind `WINDOWS = os.name ==
 "nt"`: keys via `msvcrt` instead of termios/select (4.10); Ctrl+Break handled like Ctrl-C;
 stdout/stderr reconfigured to UTF-8 (all systems) so the symbols/emoji can't crash an old console
 or a redirected file. Windows has no SIGTERM for console apps (`taskkill` without `/F` doesn't
-reach them, `/F` loses the statistics) — hence the stop file. USB works natively (vendor USB
+reach them, `/F` loses the statistics) — hence the stop file. On Windows the app is meant to run
+in the foreground, in its own window, stopped with **q** and paused with **p**: `stop.bat` /
+`pause.bat` (shortcuts creating the files) existed up to 0.2.1 and were removed in 0.2.2 as
+unnecessary; `runs\STOP` / `runs\PAUSE` still work if ever needed. USB works natively (vendor USB
 driver needed). **Tested on Windows 11** by the owner (2026-10-21): `run.bat` over Wi-Fi
-debugging, the keys (msvcrt) and `stop.bat` all work. USB on Windows (vendor driver) is not
+debugging, the keys (msvcrt) and `stop.bat` (removed in 0.2.2) all work. USB on Windows (vendor driver) is not
 tried yet. Linux runs the same uv workflow (tested: setup, a background run stopped via the stop
 file).
 
 **Windows app (one-folder zip, `packaging/`, README D):** for users who shouldn't need uv, git
 or a terminal. PyInstaller builds `feed_autoplay.exe` plus an `_internal\` folder with Python,
-the packages, adb and the icon masks; the zip adds `Connect phone.bat`, `pause.bat`,
-`stop.bat`, `README.txt` and `LICENSES\`. *One folder, not one file*: a one-file exe unpacks
+the packages, adb and the icon masks; the zip adds `connect.bat`, `disconnect.bat`, `README.txt` and
+`LICENSES\`. *One folder, not one file*: a one-file exe unpacks
 itself into a new temp folder on every start, and adb's background server keeps running from
 there (folder locked, leftovers, a different adb path each run); one folder also starts at once
 and gets fewer antivirus false alarms.
@@ -162,7 +162,16 @@ and gets fewer antivirus false alarms.
   unzipping an update over the folder keeps it — new defaults reach new installs only; a
   double-clicked exe owns its console (`GetConsoleProcessList`), so `entry()` waits for Enter at
   the end, after errors too. Helper commands for every route: `connect` (guided pairing /
-  connecting, retries a wrong address), `adb …`, `check` (version, bundled files, adb).
+  connecting, retries a wrong address), `disconnect` (ends the connections and stops adb's
+  background server, which otherwise outlives the app; asks first if a phone is connected;
+  does nothing when adb isn't running rather than starting it just to stop it), `adb …`,
+  `check` (version, bundled files, adb). `connect.bat` / `disconnect.bat` (named without spaces
+  since 0.2.2; "Connect phone.bat" before) just call them.
+- **adb startup is slow on Wi-Fi networks:** a freshly started adb server first looks for paired
+  phones via mDNS and didn't answer `adb devices` for 45 s to ~3 min on the test network
+  (`ADB_MDNS=0`: instantly, but then no automatic reconnect). Not a pipe or code problem —
+  plain `adb devices` in a shell waits just as long. `connect` prints "Starting adb (this can
+  take a minute or two)" when it has to start it.
 - **Build:** `uv run --group build packaging/build.py` — PyInstaller (`packaging/feed_autoplay.spec`,
   data files listed one by one: icon masks, uiautomator2's `u2.jar` / `app-uiautomator.apk` (it
   installs its helper on the phone from them), adbutils' `binaries`, the default settings), the
@@ -185,11 +194,12 @@ and gets fewer antivirus false alarms.
   stopped via its own `runs/STOP`; the connect wizard (skip pairing, wrong port → retry, right
   port → "Ready"). **On Windows:** the release builds of v0.2.0 and v0.2.1 passed on GitHub's
   runner (self-check included; 43 MB zip with `adb.exe` + its DLLs); the owner ran the v0.2.0 zip
-  on Windows 11 (2026-10-21): the exe and the `.bat` files (`Connect phone.bat`, `pause.bat`,
-  `stop.bat`) worked over **USB** (vendor driver) and **Wi-Fi**. Not reported in detail: how
+  on Windows 11 (2026-10-21): the exe and the `.bat` files (`Connect phone.bat` — now `connect.bat` — and `pause.bat`,
+  `stop.bat`, removed in 0.2.2) worked over **USB** (vendor driver) and **Wi-Fi**. Not reported in detail: how
   SmartScreen / Defender reacted.
 - **Releases:** v0.2.0 (first Windows app), v0.2.1 (new default `settings.txt`; `.sha256` with LF
-  line endings so `sha256sum -c` works on Linux/macOS).
+  line endings so `sha256sum -c` works on Linux/macOS), v0.2.2 (`disconnect.bat` / `disconnect`;
+  `connect.bat` renamed from "Connect phone.bat"; `pause.bat` / `stop.bat` removed).
 
 **In a container (Docker or Podman — no Python on the host):** see `CONTAINER.md`.
 Image `feed-autoplay` (named in `compose.yaml`; the code is copied in, so rebuild after code
@@ -228,7 +238,7 @@ Everything below was measured on this setup; coordinates and IDs may differ else
 | Instagram | **451.0.0.53.80** — auto-updated from 450.0.0.50.77 on 2026-10-16 19:23, a few hours into development; only the first exploration (feed headers, first player dumps) ran on 450. All recordings, tuning, icon masks and long runs are on 451. The app warns at startup on any other version (`TESTED_INSTAGRAM`). |
 | PC | Ubuntu; Python 3.10 (development, pip venv) → Python 3.13 via uv (since 2026-10-21); uiautomator2 3.7.0, adbutils 2.12.0, numpy 2.2.6, Pillow 12.3.0 |
 | Connection | USB at first, later Wi-Fi debugging |
-| Windows | the owner's Windows 11 PC: native uv route (`run.bat`, 4.10 keys, `stop.bat`) and the Windows app zip (v0.2.0: exe, `Connect phone.bat`, `pause.bat`, `stop.bat`; USB with the vendor driver and Wi-Fi) — run by the owner, results reported back |
+| Windows | the owner's Windows 11 PC: native uv route (`run.bat`, 4.10 keys, `stop.bat`) and the Windows app zip (v0.2.0: exe, `Connect phone.bat`, `pause.bat`, `stop.bat` — the last two removed in 0.2.2; USB with the vendor driver and Wi-Fi) — run by the owner, results reported back |
 | Phone settings | pattern screen lock; Developer options → **Stay awake** on (since 2026-10-18, after 5.1) |
 
 Useful screen landmarks (1080×2340): status bar ends ~83 px; Instagram tab bar starts at
@@ -306,7 +316,7 @@ run logs, 4.11), `tools/traces/` (13 2x recordings), `tools/traces_1x/`
 (22 1x recordings) and `tools/icon_samples/` — the data folders are **local only**
 (git-ignored, see 5). Run logs and max-watch dumps go to `runs/`. Container setup: `Dockerfile`,
 `compose.yaml`, `docker/entrypoint.sh`, `.env.example`, guide `CONTAINER.md`. Native setup:
-`pyproject.toml` + `uv.lock` (uv), `run.bat` / `stop.bat` / `pause.bat` (Windows), `.gitattributes` (CRLF for
+`pyproject.toml` + `uv.lock` (uv), `run.bat` (Windows, uv route), `.gitattributes` (CRLF for
 `.bat`).
 
 ---
@@ -873,7 +883,7 @@ plus a background run for the file):
 
 Not tried live: a pause during an in-feed video (rare path; same handling as the feed scan),
 the phone locked during a pause (avoided: it has a pattern lock — the code path is the normal
-unlock wait), `pause.bat` on Windows.
+unlock wait).
 
 
 ### 4.11 Statistics and pace estimate
@@ -1218,14 +1228,14 @@ repost"** message, and every repost tap was refused → repost refusal detection
 
 ## 6. Known limitations and ideas
 
-- Native Windows (uv, `run.bat`): tested on Windows 11 over Wi-Fi (keys, `stop.bat`). Not run
-  through this route yet, but working in the Windows app on the same PC (same adb, driver and
-  `.bat` files): USB with the vendor driver and `pause.bat`.
+- Native Windows (uv, `run.bat`): tested on Windows 11 over Wi-Fi (keys). USB with the vendor
+  driver not run through this route yet, but working in the Windows app on the same PC (same
+  adb and driver).
 
 - Windows app (`packaging/`): tested on Windows 11 (v0.2.0, USB and Wi-Fi); unsigned, so
   SmartScreen warns on first start and antivirus may flag it (report
   false positives to Microsoft). Updating over a running adb server fails on the locked
-  `adb.exe`: `feed_autoplay.exe adb kill-server` first.
+  `adb.exe`: `disconnect.bat` first.
 
 - Container runs (CONTAINER.md): Wi-Fi debugging only; if the phone restarts mid-run its
   wireless-debugging port changes and the app can't reconnect on its own (new `PHONE` needed);

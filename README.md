@@ -143,13 +143,6 @@ Windows").
 .\run.bat --play all --2x                                     # with keys: h help · s stats · q quit
 ```
 
-**In the background** (a minimized window):
-```powershell
-start "" /min run.bat --play all --2x                        # start it
-.\pause.bat                                                   # pause (the phone is yours) / resume
-.\stop.bat                                                    # stop it
-```
-
 Stopping always prints the final statistics (the window stays open to read them). All options:
 `.\run.bat --help`. **Update:** `git pull` (or download the zip again).
 
@@ -244,9 +237,13 @@ unzip it (e.g. to your Desktop). **For USB:** also install your phone maker's US
 ### 3. Connect the phone
 
 - **USB:** plug it in — nothing else to do.
-- **Wi-Fi:** double-click **`Connect phone.bat`** in the folder. It asks for the pairing IP &
-  port and code ("Pair device with pairing code", needed once), then for the IP & port at the top
-  of the Wireless debugging screen, and tells you when the phone is ready.
+- **Wi-Fi:** double-click **`connect.bat`** in the folder. It asks for the pairing IP & port
+  and code ("Pair device with pairing code", needed once), then for the IP & port at the top of
+  the Wireless debugging screen, and tells you when the phone is ready.
+- **Done for now:** double-click **`disconnect.bat`**. It ends the connections and stops adb,
+  which otherwise keeps running in the background (`adb.exe`) after the app ends. The pairing
+  stays; to remove the computer for good: on the phone, Wireless debugging → Paired devices →
+  tap it → Forget.
 
 ### 4. Run
 
@@ -257,9 +254,8 @@ with Notepad to change them (put a `#` in front of an option to turn it off). An
 change an existing `settings.txt`. Keys work in its window (**h** help · **s**
 stats · **q** quit); it stays open at the end so you can read the statistics.
 
-**Pause / stop without the window in front:** double-click `pause.bat` (again to resume) /
-`stop.bat`. **Update:** unzip the new version over the old folder — `settings.txt` and `runs` are
-kept. More (troubleshooting, options): `README.txt` in the folder.
+**Update:** run `disconnect.bat`, then unzip the new version over the old folder —
+`settings.txt` and `runs` are kept. More (troubleshooting, options): `README.txt` in the folder.
 
 ---
 
@@ -300,9 +296,8 @@ already liked/reposted/saved is left alone. Example:
 
 Keys work when the tool runs in a terminal window, not in the background.
 
-**Using the phone in between:** press **p** (in the background: create `runs/PAUSE`, or
-`pause.bat` on Windows), use the phone as you like, then press **p** again (delete the file /
-`pause.bat` again). While paused the tool doesn't touch the phone at all. On resume it carries
+**Using the phone in between:** press **p** (in the background: create `runs/PAUSE`), use the
+phone as you like, then press **p** again (delete the file). While paused the tool doesn't touch the phone at all. On resume it carries
 on with the same video if you left it untouched; otherwise it leaves that video (no like etc.)
 and continues from the Home feed. Paused time doesn't count in the statistics' pace.
 

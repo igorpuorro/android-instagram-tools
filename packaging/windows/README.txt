@@ -24,9 +24,13 @@ Use it at your own risk, with sensible settings.
 --------------------
 - USB: plug it in. Windows needs the phone maker's USB driver (Samsung: "Samsung Android USB
   Driver for Windows").
-- Wi-Fi: double-click "Connect phone.bat" and follow it (it asks for the numbers shown on the
+- Wi-Fi: double-click connect.bat and follow it (it asks for the numbers shown on the
   phone's Wireless debugging screen). Pairing is needed once; when the phone restarts or
   Wireless debugging is switched on again, its port changes: connect again.
+- Done for now: double-click disconnect.bat. It ends the connections and stops adb, which
+  otherwise keeps running in the background (adb.exe) after feed_autoplay ends. The pairing
+  stays, so connect.bat works again without a new code. To remove this computer for good: on
+  the phone, Developer options > Wireless debugging > Paired devices > tap it > Forget.
 
 
 3. Run
@@ -42,9 +46,9 @@ Keys while it runs (in its window):
   w play mode     l like mode    r repost mode    c copy-link mode    b save mode
   s statistics    h help         q quit
 
-Using the phone in between: press p, use the phone, press p again. Without the window in
-front (e.g. minimized), double-click pause.bat (again to resume). stop.bat stops it; the
-final statistics are always printed and the window stays open until you press Enter.
+Using the phone in between: press p, use the phone, press p again. q stops it: the final
+statistics are always printed and the window stays open until you press Enter. (Closing the
+window with X also stops it, but without the statistics.)
 
 Files: the runs folder next to the exe gets your copied links (shared-links.txt) and
 diagnostics. It's personal -- don't share it.
@@ -65,11 +69,15 @@ All options: feed_autoplay.exe --help
 Troubleshooting
 ---------------
 - "no phone connected": USB -- cable, driver, USB debugging, the prompt on the phone;
-  Wi-Fi -- run "Connect phone.bat" again.
+  Wi-Fi -- run connect.bat again.
+- connect.bat seems stuck at "Starting adb": a freshly started adb first looks for phones on
+  the network and can take a minute or two to answer.
 - Check the app's own files: feed_autoplay.exe check (in a terminal in this folder).
 - Updating: download the new zip and unzip it over this folder; your settings.txt and the
   runs folder are kept (they aren't in the zip). If Windows says a file is in use, run
-  feed_autoplay.exe adb kill-server first (or restart the PC).
+  disconnect.bat first (or restart the PC). Since 0.2.2 "Connect phone.bat" is called
+  connect.bat, and pause.bat / stop.bat are gone (use p and q in the window): delete the
+  old files.
 - If scrcpy (screen mirroring) and this app keep disconnecting each other, they use two
   different adb versions: start scrcpy with this app's adb (set ADB to
   <this folder>\_internal\adbutils\binaries\adb.exe).

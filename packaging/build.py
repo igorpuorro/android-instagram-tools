@@ -25,10 +25,9 @@ ROOT = Path(__file__).resolve().parent.parent
 BUILD = ROOT / "build"
 WINDOWS = os.name == "nt"
 PLATFORM = "windows" if WINDOWS else "linux"
-# files next to the exe (Windows only: the .bat files and texts are for Windows users)
-# (settings.txt is bundled instead: the app creates it on first start, so updates keep it)
-EXTRAS = [ROOT / "pause.bat", ROOT / "stop.bat"] + sorted(
-    f for f in (ROOT / "packaging" / "windows").iterdir() if f.name != "settings.txt")
+# files next to the exe (Windows only: connect.bat, disconnect.bat, README.txt); settings.txt
+# is bundled instead: the app creates it on first start, so updates keep it
+EXTRAS = sorted(f for f in (ROOT / "packaging" / "windows").iterdir() if f.name != "settings.txt")
 # must never be in the bundle (private data, see .gitignore)
 FORBIDDEN = re.compile(r"(^|/)(runs|\.env|traces|traces_1x|icon_samples|\.git)(/|$)")
 

@@ -14,14 +14,15 @@ Flow: find a video post in the feed -> tap it (opens full-screen player with sou
 Keys while running (h shows them):
   n = next video  p = pause (hand the phone over) / resume  x = 2x on/off  w = play mode
   l = like mode  r = repost mode  c = copy-link mode  b = save mode  s = statistics  q = quit
-Without keys (background runs): create the file runs/STOP to stop cleanly (stop.bat on Windows);
-while the file runs/PAUSE exists the run is paused (pause.bat on Windows toggles it).
+Without keys (background runs): create the file runs/STOP to stop cleanly; while the file
+runs/PAUSE exists the run is paused.
 
 Run with uv (sets up Python and the packages by itself): uv run feed_autoplay.py --help
 Windows app (packaging/): feed_autoplay.exe, options from settings.txt next to it.
 
 Helper commands (instead of options): connect (guided phone pairing / connecting),
-adb <arguments> (the bundled adb), check (are all bundled files there?).
+disconnect (end the connections and stop adb), adb <arguments> (the bundled adb),
+check (are all bundled files there?).
 """
 import argparse
 import importlib.resources
@@ -35,7 +36,7 @@ import time
 import traceback
 from pathlib import Path
 
-__version__ = "0.2.1"  # same as pyproject.toml; the Windows release tag is v<version>
+__version__ = "0.2.2"  # same as pyproject.toml; the Windows release tag is v<version>
 
 WINDOWS = os.name == "nt"
 # Running as the Windows app built by PyInstaller (packaging/, DEVELOPMENT.md 1): the bundled
@@ -159,9 +160,9 @@ class Keys:
 
 
 # Creating this file stops a run cleanly (final statistics), on any system and without a
-# terminal: background runs, Windows (no SIGTERM there; stop.bat creates it).
+# terminal: background runs (Linux/macOS nohup, the container; Windows has no SIGTERM).
 STOP_FILE = RUNS / "STOP"
-# While this file exists the run is paused (same as key p): pause.bat toggles it on Windows.
+# While this file exists the run is paused (same as key p).
 PAUSE_FILE = RUNS / "PAUSE"
 # resuming in place needs the paused frame unchanged (mean grey-level difference, 0-255)
 PAUSE_SAME_FRAME = 4.0
@@ -1372,8 +1373,8 @@ def startup_report(d, args, keys_on, settings_from=None):
     if settings_from:
         log(f"   settings   from {settings_from}")
     log(f"   end        " + ("Instagram's log + frame comparison" if args.use_log else "frame comparison only (--no-log)"))
-    stop = "stop.bat or create runs\\STOP" if WINDOWS else "Ctrl-C, kill <pid> or create runs/STOP"
-    pause = "pause.bat" if WINDOWS else "create / delete runs/PAUSE"
+    stop = "create runs\\STOP" if WINDOWS else "Ctrl-C, kill <pid> or create runs/STOP"
+    pause = "create / delete runs\\PAUSE" if WINDOWS else "create / delete runs/PAUSE"
     log(f"   keys       " + ("press h for help" if keys_on else f"off (no terminal) -- stop: {stop} · pause: {pause}"))
     log_block_end()
 
@@ -1389,7 +1390,7 @@ def pick_serial():
     if not entries:
         if FROZEN:
             sys.exit("no phone connected: plug it in over USB (USB debugging on), or run "
-                     "\"Connect phone.bat\" for Wi-Fi")
+                     "connect.bat for Wi-Fi")
         sys.exit("no device connected (check `adb devices`; for Wi-Fi: adb connect <ip>:<port>)")
     phones = {}
     for d in entries:
@@ -1409,6 +1410,24 @@ def run_adb(argv):
 def adb_output(*argv):
     r = subprocess.run([adbutils.adb_path(), *argv], capture_output=True, text=True, errors="replace")
     return (r.stdout + r.stderr).strip()
+
+
+def adb_server_running():
+    """Is adb's background server up? (checked without starting it)"""
+    import socket
+    try:
+        with socket.create_connection(("127.0.0.1", int(os.environ.get("ANDROID_ADB_SERVER_PORT", 5037))),
+                                      timeout=1):
+            return True
+    except OSError:
+        return False
+
+
+def start_adb_note():
+    """A freshly started adb first looks for Wi-Fi phones (mDNS) and can take a while to answer
+    (measured 45 s to ~3 min on the test network): say so instead of looking stuck."""
+    if not adb_server_running():
+        print("Starting adb (this can take a minute or two)...", flush=True)
 
 
 def connected_phones():
@@ -1432,6 +1451,7 @@ def connect_wizard(argv):
     print("Connect the phone over Wi-Fi (Wireless debugging).")
     print("Phone and computer must be on the same Wi-Fi network. Over USB nothing is needed here:")
     print("plug the phone in with USB debugging on and accept the prompt on the phone.\n")
+    start_adb_note()
     phones = connected_phones()
     if phones:
         print("Already connected: " + ", ".join(phones))
@@ -1475,6 +1495,31 @@ def connect_wizard(argv):
     return 1
 
 
+def disconnect(argv):
+    """End the phone connections and stop adb's background server -- it keeps running after the
+    app ends (holding the connection, so the next start is quick) until stopped or the PC
+    restarts. The pairing stays: `connect` works again later without a new code."""
+    if not adb_server_running():  # don't start adb just to stop it
+        print("adb isn't running: no phone is connected through it, nothing to do.")
+        return 0
+    phones = connected_phones()
+    if phones:
+        print("Connected: " + ", ".join(phones))
+        print("A running feed_autoplay loses its connection too (stop it first: q in its window).")
+        if (input("Disconnect and stop adb? [Y/n] ").strip().lower() or "y")[0] != "y":
+            return 0
+        print(adb_output("disconnect") or "disconnected")
+    else:
+        print("No phone connected.")
+    out = adb_output("kill-server")
+    print(out if out and "cannot connect" not in out.lower() else "adb stopped")
+    print("\nDone: adb is no longer running. USB phones are connected again at the next start;")
+    print("for Wi-Fi run connect again (no new pairing needed). To remove this computer for good:")
+    print("on the phone, Developer options > Wireless debugging > Paired devices > tap it > Forget")
+    print("(or switch Wireless debugging off).")
+    return 0
+
+
 def self_check(argv):
     """Are all bundled files there? (used by the Windows build, useful for troubleshooting)"""
     problems = []
@@ -1503,7 +1548,7 @@ def self_check(argv):
     return 1 if problems else 0
 
 
-COMMANDS = {"connect": connect_wizard, "adb": run_adb, "check": self_check}
+COMMANDS = {"connect": connect_wizard, "disconnect": disconnect, "adb": run_adb, "check": self_check}
 
 
 def settings_args():

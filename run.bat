@@ -2,7 +2,7 @@
 rem feed_autoplay launcher for Windows -- double-click it, or run it from a terminal with options:
 rem   run.bat --play all --2x --like all
 rem The first run sets up Python and the packages by itself (uv); later runs start at once.
-rem Stop: press q in this window, or run stop.bat (e.g. for a minimized window).
+rem Stop: press q in this window (the final statistics are printed).
 setlocal
 cd /d "%~dp0"
 
