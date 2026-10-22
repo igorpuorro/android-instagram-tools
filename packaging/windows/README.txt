@@ -73,7 +73,9 @@ Troubleshooting
 - connect.bat seems stuck at "Starting adb": a freshly started adb first looks for phones on
   the network and can take a minute or two to answer.
 - Check the app's own files: feed_autoplay.exe check (in a terminal in this folder).
-- Updating: download the new zip and unzip it over this folder; your settings.txt and the
+- Updating: download the new zip from
+  https://github.com/igorpuorro/android-instagram-tools/releases/latest (always the newest
+  version) and unzip it over this folder; your settings.txt and the
   runs folder are kept (they aren't in the zip). If Windows says a file is in use, run
   disconnect.bat first (or restart the PC). Since 0.2.2 "Connect phone.bat" is called
   connect.bat, and pause.bat / stop.bat are gone (use p and q in the window): delete the

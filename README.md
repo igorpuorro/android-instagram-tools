@@ -230,7 +230,8 @@ no uv, git or terminal needed.
 
 ### 2. Download (once)
 
-From the repository's **Releases** page, download `feed_autoplay-windows-<version>.zip` and
+From the **[latest release](https://github.com/igorpuorro/android-instagram-tools/releases/latest)**
+(this link always opens the newest version), download `feed_autoplay-windows-<version>.zip` and
 unzip it (e.g. to your Desktop). **For USB:** also install your phone maker's USB driver
 (Samsung: "Samsung Android USB Driver for Windows").
 

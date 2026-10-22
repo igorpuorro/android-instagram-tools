@@ -188,6 +188,8 @@ and gets fewer antivirus false alarms.
   a run artifact. To release: set the same version in `pyproject.toml` and `__version__`
   (`build.py` refuses a mismatch, and a tag that isn't `v<version>`), commit, `git tag
   v<version>`, push the commit and the tag.
+  Docs and shared links point to `…/releases/latest` (GitHub redirects it to the newest
+  release), never to a version, so they don't go stale; old release pages are left as they were.
 - **Tested (2026-10-21, Linux build of the same bundle):** build and self-check pass (65 MB zip,
   117 MB unpacked); started from another folder with no `settings.txt` it created one, showed
   "settings from settings.txt", put `runs/` next to the app, connected with the bundled adb and
