@@ -189,7 +189,8 @@ and gets fewer antivirus false alarms.
   (`build.py` refuses a mismatch, and a tag that isn't `v<version>`), commit, `git tag
   v<version>`, push the commit and the tag.
   Docs and shared links point to `…/releases/latest` (GitHub redirects it to the newest
-  release), never to a version, so they don't go stale; old release pages are left as they were.
+  release), never to a version, so they don't go stale. Superseded release pages may be deleted
+  (keep the tags).
 - **Tested (2026-10-21, Linux build of the same bundle):** build and self-check pass (65 MB zip,
   117 MB unpacked); started from another folder with no `settings.txt` it created one, showed
   "settings from settings.txt", put `runs/` next to the app, connected with the bundled adb and
@@ -202,7 +203,10 @@ and gets fewer antivirus false alarms.
 - **Releases:** v0.2.0 (first Windows app), v0.2.1 (new default `settings.txt`; `.sha256` with LF
   line endings so `sha256sum -c` works on Linux/macOS), v0.2.2 (`disconnect.bat` / `disconnect`;
   `connect.bat` renamed from "Connect phone.bat"; `pause.bat` / `stop.bat` removed), v0.2.3 (default
-  `settings.txt`: repost all instead of followed).
+  `settings.txt`: repost all instead of followed). The release pages of v0.2.0–v0.2.2 were deleted
+  on 2026-10-22 (superseded; nobody depended on them); their **tags are kept** as the record of
+  each version. To rebuild an old zip: Actions → windows-release → Run workflow → pick the
+  tag; the zip comes as the run's artifact (a manual run doesn't publish a release).
 
 **In a container (Docker or Podman — no Python on the host):** see `CONTAINER.md`.
 Image `feed-autoplay` (named in `compose.yaml`; the code is copied in, so rebuild after code
