@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Backtest the stats' pace estimate on run logs (DEVELOPMENT.md 4.8).
+"""Backtest the stats' pace estimate on run logs (DEVELOPMENT.md 4.11).
 
 At a checkpoint every 10 videos, compares the estimate from the cycle times so far with the
 number of videos actually played in the following hour. Hours containing a long wait (lock

@@ -1,5 +1,5 @@
 # Builds the Windows app (one-folder zip, packaging/build.py; DEVELOPMENT.md 1, "Windows app").
-# On a version tag (v0.2.0 = the version in pyproject.toml and feed_autoplay.py) it publishes a
+# On a version tag (v<version>, e.g. v0.2.3 = the version in pyproject.toml and feed_autoplay.py) it publishes a
 # GitHub Release with the zip and its SHA-256; run by hand (Actions tab) it only builds, and the
 # zip is downloadable from the run's artifacts.
 name: windows-release

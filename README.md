@@ -34,7 +34,7 @@ flowchart TD
 | **Start** | `uv run feed_autoplay.py` | double-click `run.bat` | `docker compose run --rm app` | double-click `feed_autoplay.exe` |
 | **Options** | on the command line | on the command line | `compose.yaml` / command line | `settings.txt` (Notepad) |
 | **Best for** | everyday use on Linux/macOS | Windows, following the code (`git pull`) | no Python on the computer; same setup everywhere | Windows, the simplest |
-| **Status** | tested on Linux; macOS expected to work | tested on Windows 11 (Wi-Fi); USB not yet tried | tested on Linux; not yet tried on Windows | tested on Windows 11, USB and Wi-Fi |
+| **Status** | tested on Linux; macOS expected to work | tested on Windows 11, USB and Wi-Fi | tested on Linux; not yet tried on Windows | tested on Windows 11, USB and Wi-Fi |
 
 *USB is the more stable connection for long runs.* Whichever you choose, the tool, its options and
 keys are the same — see the [feed_autoplay reference](#feed_autoplay-reference).
@@ -202,7 +202,7 @@ docker compose up -d                                          # start it (settin
 docker compose logs -f                                        # follow it
 docker compose stop                                           # stop it
 ```
-To use the phone meanwhile, create an empty file `runs/PAUSE` (Windows: `type nul > runs\PAUSE`)
+To use the phone meanwhile, create an empty file `runs/PAUSE` (PowerShell: `ni runs\PAUSE`)
 to pause, and delete it to resume.
 
 Stopping always prints the final statistics. All options: `docker compose run --rm app --help`.
@@ -210,6 +210,8 @@ With Podman, write `podman compose` instead of `docker compose`. **Update:** `gi
 `docker compose build`. When the phone restarts, its Wi-Fi port changes: put the new one in
 `.env`. More (saving the output, mirroring alongside, troubleshooting):
 **[CONTAINER.md](CONTAINER.md)**.
+
+---
 
 ## D. Windows, download the app (nothing to install)
 
@@ -269,6 +271,8 @@ video it watched to the end. The same options and keys apply in A, B, C and D.
 
 ### Options
 
+The main ones (all of them: `--help`):
+
 | Option | Values (default in bold) | What it does |
 |---|---|---|
 | `--play` | **followed** · all | play only videos from accounts you follow, or every video |
@@ -284,6 +288,13 @@ the order of the buttons on screen (like → repost → share → save), and nev
 already liked/reposted/saved is left alone. Example:
 `--play all --2x --like all --repost followed`
 
+### Helper commands
+
+Instead of options: `connect` (guided Wi-Fi pairing and connecting), `disconnect` (end the
+connections and stop adb), `adb <arguments>` (the bundled adb), `check` (are all bundled files
+there?) — e.g. `uv run feed_autoplay.py connect`; in the Windows app `feed_autoplay.exe connect`
+(that's what `connect.bat` / `disconnect.bat` run).
+
 ### Keys
 
 | Key | | Key | |
@@ -298,8 +309,8 @@ already liked/reposted/saved is left alone. Example:
 Keys work when the tool runs in a terminal window, not in the background.
 
 **Using the phone in between:** press **p** (in the background: create `runs/PAUSE`), use the
-phone as you like, then press **p** again (delete the file). While paused the tool doesn't touch the phone at all. On resume it carries
-on with the same video if you left it untouched; otherwise it leaves that video (no like etc.)
+phone as you like, then press **p** again (delete the file). While paused the tool doesn't touch
+the phone (apart from the one tap that pauses the video). On resume it carries on with the same video if you left it untouched; otherwise it leaves that video (no like etc.)
 and continues from the Home feed. Paused time doesn't count in the statistics' pace.
 
 ### What it shows

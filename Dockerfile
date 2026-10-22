@@ -17,7 +17,7 @@ RUN apt-get update \
 RUN pip install uiautomator2==3.7.0 adbutils==2.12.0 numpy==2.2.6 pillow==12.3.0
 
 # One adb for everything: the app uses the adb bundled with adbutils (EndWatcher), so the
-# helper commands (pair/connect/adb) use the very same binary -- two adb versions would keep
+# helper commands (pair, adb, and the automatic connect) use the very same binary -- two adb versions would keep
 # restarting each other's server.
 RUN ln -s "$(python -c 'import adbutils; print(adbutils.adb_path())')" /usr/local/bin/adb
 

@@ -53,7 +53,7 @@ docker compose logs --no-log-prefix app > runs\run-<date>.log    # keep the outp
 - **Keys** don't work in background runs (no terminal). For keys, use
   `docker compose run --rm app <options>` instead.
 - **Pause** a background run to use the phone: create an empty file `PAUSE` in the `runs\`
-  folder (`type nul > runs\PAUSE` on Windows, `touch runs/PAUSE` elsewhere); delete it to resume.
+  folder (`ni runs\PAUSE` in PowerShell, `touch runs/PAUSE` elsewhere); delete it to resume.
 - **Output** stays in Docker's log until the container is removed — save it as above. The
   `runs\` folder next to `compose.yaml` gets `shared-links.txt` (copied links) and
   `maxwatch-*.npz` (diagnostics).

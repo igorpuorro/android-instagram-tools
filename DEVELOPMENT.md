@@ -70,7 +70,7 @@ all use.
 | | `--repost none\|followed\|all` | `none` | which get reposted (reposts show on your profile; `all` on long runs hits Instagram's repost limit, see 4.7b) |
 | | `--share-link none\|followed\|all` | `none` | which get Share → Copy link; links are appended to `runs/shared-links.txt` |
 | | `--save none\|followed\|all` | `none` | which get saved (to your private Saved collection) |
-| **device** | `-s SERIAL` | auto | adb serial; only needed with several *different* phones |
+| **device** | `-s`, `--serial SERIAL` | auto | adb serial; only needed with several *different* phones |
 | **advanced tuning** | `--no-log` | (log on) | end-of-video by frame comparison only |
 | | `--ref-start`, `--loop-thresh`, `--loop-rel` | per-speed profile | override the frame-comparison profile (see 4.5) |
 | | `--move-thresh`, `--min-watch` | 12 / 3 | frame-comparison tuning (see 4.5) |
@@ -142,8 +142,8 @@ in the foreground, in its own window, stopped with **q** and paused with **p**: 
 `pause.bat` (shortcuts creating the files) existed up to 0.2.1 and were removed in 0.2.2 as
 unnecessary; `runs\STOP` / `runs\PAUSE` still work if ever needed. USB works natively (vendor USB
 driver needed). **Tested on Windows 11** by the owner (2026-10-21): `run.bat` over Wi-Fi
-debugging, the keys (msvcrt) and `stop.bat` (removed in 0.2.2) all work. USB on Windows (vendor driver) is not
-tried yet. Linux runs the same uv workflow (tested: setup, a background run stopped via the stop
+debugging, the keys (msvcrt) and `stop.bat` (removed in 0.2.2) all work; later also over **USB**
+with the vendor driver (reported 2026-10-22). Linux runs the same uv workflow (tested: setup, a background run stopped via the stop
 file).
 
 **Windows app (one-folder zip, `packaging/`, README D):** for users who shouldn't need uv, git
@@ -194,7 +194,7 @@ and gets fewer antivirus false alarms.
   117 MB unpacked); started from another folder with no `settings.txt` it created one, showed
   "settings from settings.txt", put `runs/` next to the app, connected with the bundled adb and
   stopped via its own `runs/STOP`; the connect wizard (skip pairing, wrong port → retry, right
-  port → "Ready"). **On Windows:** the release builds of v0.2.0, v0.2.1 and v0.2.2 passed on GitHub's
+  port → "Ready"). **On Windows:** the release builds of v0.2.0–v0.2.3 passed on GitHub's
   runner (self-check included; 43 MB zip with `adb.exe` + its DLLs); the owner ran the v0.2.0 zip
   on Windows 11 (2026-10-21): the exe and the `.bat` files (`Connect phone.bat` — now `connect.bat` — and `pause.bat`,
   `stop.bat`, removed in 0.2.2) worked over **USB** (vendor driver) and **Wi-Fi**. Not reported in detail: how
@@ -241,7 +241,7 @@ Everything below was measured on this setup; coordinates and IDs may differ else
 | Instagram | **451.0.0.53.80** — auto-updated from 450.0.0.50.77 on 2026-10-16 19:23, a few hours into development; only the first exploration (feed headers, first player dumps) ran on 450. All recordings, tuning, icon masks and long runs are on 451. The app warns at startup on any other version (`TESTED_INSTAGRAM`). |
 | PC | Ubuntu; Python 3.10 (development, pip venv) → Python 3.13 via uv (since 2026-10-21); uiautomator2 3.7.0, adbutils 2.12.0, numpy 2.2.6, Pillow 12.3.0 |
 | Connection | USB at first, later Wi-Fi debugging |
-| Windows | the owner's Windows 11 PC: native uv route (`run.bat`, 4.10 keys, `stop.bat`) and the Windows app zip (v0.2.0: exe, `Connect phone.bat`, `pause.bat`, `stop.bat` — the last two removed in 0.2.2; USB with the vendor driver and Wi-Fi) — run by the owner, results reported back |
+| Windows | the owner's Windows 11 PC: native uv route (`run.bat`, 4.10 keys, `stop.bat`; USB with the vendor driver and Wi-Fi) and the Windows app zip (v0.2.0: exe, `Connect phone.bat`, `pause.bat`, `stop.bat` — the last two removed in 0.2.2; USB with the vendor driver and Wi-Fi) — run by the owner, results reported back |
 | Phone settings | pattern screen lock; Developer options → **Stay awake** on (since 2026-10-18, after 5.1) |
 
 Useful screen landmarks (1080×2340): status bar ends ~83 px; Instagram tab bar starts at
@@ -269,7 +269,7 @@ android-instagram-tools/
 ├── tools/                        dev tools, per tool
 ├── packaging/                    the Windows app: spec, build.py, files for the zip (1)
 ├── .github/workflows/            windows-release.yml: builds and publishes the zip on v* tags
-├── tests/                        checks without a phone (test_ui_text.py 4.12, test_pause_stats.py 4.10)
+├── tests/                        checks without a phone (test_ui_text.py 4.12, test_pause_stats.py 4.10, 4.11)
 └── Dockerfile, compose.yaml, README.md, DEVELOPMENT.md, CONTAINER.md
 ```
 
@@ -282,7 +282,10 @@ Until then everything lives in `feed_autoplay.py`:
 | `STOP_FILE` (`runs/STOP`) | checked in `Player.poll()`: creating it stops the run cleanly (stats printed); cleared at startup |
 | `PAUSE_FILE` (`runs/PAUSE`) | checked in `Player.key()`: while it exists the run is paused (`Player.pause`); cleared at startup |
 | `Player.pause` / `Resumed` | the hand-the-phone-over pause (4.10); `Resumed` sends the run back to the Home feed |
-| `Player.key` | handles global keys (q, w, l, r, c, b, s, h/?) wherever it is polled; returns n/p to the caller |
+| `Player.poll` / `Player.key` | poll: the stop file and the global keys (q, x, w, l, r, c, b, s, h/?); key: adds the pause (p / `runs/PAUSE`) and returns only n to the caller |
+| `COMMANDS`: `connect_wizard`, `disconnect`, `run_adb`, `self_check` | the helper commands connect / disconnect / adb / check (1) |
+| `entry` / `settings_args` / `owns_console` | start: a helper command or the app; `settings.txt` for the Windows app; its own window waits for Enter at the end (1) |
+| `FROZEN`, `BUNDLE_DIR`, `APP_DIR`, `RUNS` | where files are, as a script or as the Windows app (1) |
 | `MODE_KEYS` / `cycle_text` | the five mode keys in one table (attribute, label, cycle, note); `followed → [all]`-style cycle text |
 | `PLAY_MODES` … `SAVE_MODES` | the mode lists — the single definition of each setting's values and their order (also used as `--help` choices) |
 | `Player.help` | the in-app help block (key **h** / **?**), current modes inline |
@@ -797,13 +800,14 @@ Any test that taps Repost must check `repost_state()` before **every** tap, incl
 `msvcrt.kbhit()`/`getwch()` (Windows; the two-code arrow/function keys are ignored), so the main
 loop never blocks. `Player.poll()` also checks the stop file `runs/STOP` first: if it exists it is
 removed and the run ends like `q` (works without a terminal, on every system); `Player.key()`
-adds the pause (key p or `runs/PAUSE`, below). `Player.key()` is polled both while scanning the feed and while watching; it handles
-the global keys itself (q raises `Quit`; w / l / r / c / b cycle `args.play` / `args.like` /
+adds the pause (key p or `runs/PAUSE`, below). `Player.key()` is polled both while scanning the
+feed and while watching; it calls `Player.poll()`, which handles the global keys (q raises
+`Quit`; w / l / r / c / b cycle `args.play` / `args.like` /
 `args.repost` / `args.share_link` / `args.save` in place (one table, `MODE_KEYS`) and log the
 new mode with its cycle, e.g. `like mode: all   (none → followed → [all])`; x toggles
 `args.speed2x` (2x on/off, `SPEED_MODES`); s prints the stats;
-h/? prints the help block; p pauses) and
-returns only n to the caller.
+h/? prints the help block); `key()` itself handles the pause (p) and returns only n to the
+caller.
 
 The help (`Player.help`) uses the same block style as the statistics, grouped like `--help`,
 with the current mode marked inside each key's cycle:
@@ -854,7 +858,7 @@ in-feed video, lock-screen wait):
    pauses the video and, 1 s later, the author and a frame of the paused video are recorded.
    In the feed or an in-feed video nothing is tapped (a tap there toggles sound).
 2. **While paused** the app doesn't touch the phone (no taps, swipes, screenshots or dumps);
-   it only polls keys / files — q, the stop file, s, h and the mode keys still work.
+   it only polls keys / files — q, the stop file, s, h, x and the mode keys still work.
 3. **Resume** (p again, or the file deleted when the pause came from the file): the video
    continues in place (one tap) **only if** the screen is on and unlocked, Instagram is in
    front, the full-screen player shows the same author **and** the frame still matches
@@ -1231,9 +1235,8 @@ repost"** message, and every repost tap was refused → repost refusal detection
 
 ## 6. Known limitations and ideas
 
-- Native Windows (uv, `run.bat`): tested on Windows 11 over Wi-Fi (keys). USB with the vendor
-  driver not run through this route yet, but working in the Windows app on the same PC (same
-  adb and driver).
+- Native Windows (uv, `run.bat`): tested on Windows 11 over USB (vendor driver) and Wi-Fi, keys
+  included.
 
 - Windows app (`packaging/`): tested on Windows 11 (v0.2.0, USB and Wi-Fi); `disconnect.bat`
   (v0.2.2) tested on Linux only (`disconnect` command), not yet on Windows; unsigned, so

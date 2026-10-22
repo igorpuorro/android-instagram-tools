@@ -44,7 +44,7 @@ The first time, Windows may say "Windows protected your PC": click "More info", 
 Keys while it runs (in its window):
   n next video    p pause (the phone is yours) / resume    x 2x on/off
   w play mode     l like mode    r repost mode    c copy-link mode    b save mode
-  s statistics    h help         q quit
+  s statistics    h / ? help     q quit
 
 Using the phone in between: press p, use the phone, press p again. q stops it: the final
 statistics are always printed and the window stays open until you press Enter. (Closing the
@@ -56,6 +56,8 @@ diagnostics. It's personal -- don't share it.
 
 Options (settings.txt, or after feed_autoplay.exe in a terminal)
 -----------------------------------------------------------------
+(default = what applies when an option is left out; the settings.txt created on the
+first start sets play all, 2x and all actions)
   --play followed|all            only accounts you follow (default), or every video
   --2x                           play at 2x speed
   --like none|followed|all       like videos watched to the end (default followed)

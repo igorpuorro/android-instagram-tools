@@ -295,7 +295,7 @@ class Player:
         return f"{h}h {m:02d}m" if h else f"{m}m"
 
     # Pace estimate, chosen by backtesting on 4 recorded runs (56 checkpoints: estimate vs.
-    # videos actually played in the next hour; DEVELOPMENT.md 4.8):
+    # videos actually played in the next hour; DEVELOPMENT.md 4.11):
     #   median of recent cycles: error ~20 videos/h, always too high (long videos are rare
     #   but take much of the hour -- the hourly count follows the MEAN cycle);
     #   mean (recent / whole run) or time-weighted mean: ~10; weighted mean adapts to
