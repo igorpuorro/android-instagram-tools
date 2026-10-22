@@ -30,6 +30,7 @@ Contents
    - 4.10 [Keyboard controls](#410-keyboard-controls)
    - 4.11 [Statistics and pace estimate](#411-statistics-and-pace-estimate)
    - 4.12 [Languages](#412-languages) — English and Brazilian Portuguese
+   - 4.13 [Screen brightness](#413-screen-brightness) — keys < >, `--brightness`
 5. [How things were tested (and how to re-test)](#5-how-things-were-tested-and-how-to-re-test)
 6. [Known limitations and ideas](#6-known-limitations-and-ideas)
 7. [Pitfalls checklist](#7-pitfalls-checklist)
@@ -66,6 +67,7 @@ all use.
 | | `--2x` | (off) | lock 2x speed for each video (normal speed otherwise) |
 | | `--loops N` | 1 | passes to watch per video |
 | | `--max-watch S` | 300 | cap per video |
+| | `--brightness PERCENT` | unchanged | phone screen brightness at start, restored at the end (4.13) |
 | **actions** on videos watched to the end, done in screen order | `--like none\|followed\|all` | `followed` | which ones get liked |
 | | `--repost none\|followed\|all` | `none` | which get reposted (reposts show on your profile; `all` on long runs hits Instagram's repost limit, see 4.7b) |
 | | `--share-link none\|followed\|all` | `none` | which get Share → Copy link; links are appended to `runs/shared-links.txt` |
@@ -84,6 +86,8 @@ Keys while running (only when started from a terminal):
 | **n** | next video (skipped videos are never liked, reposted, link-copied or saved) |
 | **p** | pause: hand the phone over (the tool stops touching it) / resume (4.10) |
 | **x** | 2x speed on / off, from the next video (4.4, 4.10) |
+| **<** / **>** | phone screen dimmer / brighter (4.13) |
+| **a** | the phone's own brightness again, the app leaves it alone (4.13) |
 | **w** | cycle play mode: followed → all |
 | **l** | cycle like mode: none → followed → all |
 | **r** | cycle repost mode: none → followed → all |
@@ -96,7 +100,7 @@ Keys while running (only when started from a terminal):
 At startup the app prints a block with the phone, the Instagram version and the settings:
 
 ```
-── feed_autoplay 0.2.3 ─────────────────────────────────────────
+── feed_autoplay 0.3.0 ─────────────────────────────────────────
    phone      Samsung SM-A515F · Android 11 · serial R58N91XKQZT · Wi-Fi
    instagram  451.0.0.53.80
    playback   play all · 2x on · max 300 s per video
@@ -273,7 +277,7 @@ android-instagram-tools/
 ├── tools/                        dev tools, per tool
 ├── packaging/                    the Windows app: spec, build.py, files for the zip (1)
 ├── .github/workflows/            windows-release.yml: builds and publishes the zip on v* tags
-├── tests/                        checks without a phone (test_ui_text.py 4.12, test_pause_stats.py 4.10, 4.11)
+├── tests/                        checks without a phone (test_ui_text.py 4.12, test_pause_stats.py 4.10, 4.11, test_brightness.py 4.13)
 └── Dockerfile, compose.yaml, README.md, DEVELOPMENT.md, CONTAINER.md
 ```
 
@@ -285,6 +289,7 @@ Until then everything lives in `feed_autoplay.py`:
 | `Keys` | non-blocking key reader (termios/select on Linux/macOS, msvcrt on Windows); inert when stdin isn't a TTY |
 | `STOP_FILE` (`runs/STOP`) | checked in `Player.poll()`: creating it stops the run cleanly (stats printed); cleared at startup |
 | `PAUSE_FILE` (`runs/PAUSE`) | checked in `Player.key()`: while it exists the run is paused (`Player.pause`); cleared at startup |
+| `Brightness` | the phone's screen brightness: keys < >, `--brightness`, saved and restored (4.13) |
 | `Player.pause` / `Resumed` | the hand-the-phone-over pause (4.10); `Resumed` sends the run back to the Home feed |
 | `Player.poll` / `Player.key` | poll: the stop file and the global keys (q, x, w, l, r, c, b, s, h/?); key: adds the pause (p / `runs/PAUSE`) and returns only n to the caller |
 | `COMMANDS`: `connect_wizard`, `disconnect`, `run_adb`, `self_check` | the helper commands connect / disconnect / adb / check (1) |
@@ -802,7 +807,12 @@ Any test that taps Repost must check `repost_state()` before **every** tap, incl
 
 `Keys` puts the terminal in cbreak mode and polls stdin with `select` (Linux/macOS), or polls
 `msvcrt.kbhit()`/`getwch()` (Windows; the two-code arrow/function keys are ignored), so the main
-loop never blocks. `Player.poll()` also checks the stop file `runs/STOP` first: if it exists it is
+loop never blocks. On Linux/macOS it reads everything that arrived straight from the file
+descriptor (`os.read`) and hands the keys out one per call: reading one character through
+`sys.stdin` (until 0.3.0) pulled keys typed together — `<<`, a held key — into Python's buffer,
+where `select()` can't see them, so the second waited until the next key press ("stuck until I
+press s"; reproduced with a pseudo-terminal, fixed 2026-10-22). Windows reads the console one key
+at a time and never had this. `Player.poll()` also checks the stop file `runs/STOP` first: if it exists it is
 removed and the run ends like `q` (works without a terminal, on every system); `Player.key()`
 adds the pause (key p or `runs/PAUSE`, below). `Player.key()` is polled both while scanning the
 feed and while watching; it calls `Player.poll()`, which handles the global keys (q raises
@@ -822,6 +832,8 @@ with the current mode marked inside each key's cycle:
               p  pause: the phone is yours until p again (also runs/PAUSE)
               x  2x speed         off → [on]                from the next video
               w  play mode        followed → [all]
+              <  >  brightness    dimmer / brighter         now 30%
+              a  brightness       the phone's own again     (adaptive if it was)
    actions    l  like mode        none → followed → [all]
    (screen    r  repost mode      none → [followed] → all  shows on your profile
     order)    c  copy link mode   [none] → followed → all  → runs/shared-links.txt
@@ -1092,11 +1104,58 @@ showing), the share sheet and the snackbars (5, "Diagnostics"); append each text
 thousands separator, extend `post_id` if the time label has another shape, add cases to
 `tests/test_ui_text.py`, run it, then a short live run with `--like none` first.
 
+### 4.13 Screen brightness
+
+Keys **<** (dimmer) and **>** (brighter), **a** (the phone's own again), and `--brightness PERCENT` at start — mainly to save
+battery and heat on long runs watched through scrcpy. Both keys need Shift on common layouts
+(US, ABNT2), which is why `<`/`>` were chosen over `-`/`+` (one with Shift, one without).
+
+- **How:** `adb shell settings put system screen_brightness <0–255>` — no root, no app on the
+  phone. Adaptive brightness (`screen_brightness_mode` 1) would override the level within
+  seconds, so the app switches it off (0) while it sets the level. The setting's scale is
+  0–255 on every phone, also where the display goes further (this Samsung: "extended" 365, the
+  outdoor boost, which the setting can't reach). Stops: 1, 5, 10, 20 … 100 % (`Brightness.LEVELS`);
+  the first key press starts from the phone's current level; never 0 (black).
+- **Restore:** before its first change the app saves the phone's level and mode and puts them
+  back at the end — `q`, the stop file, Ctrl-C, SIGTERM (`main()`'s `finally`), and while
+  **paused** (`hold()` / `release()`: the phone is the user's then; a key pressed while paused
+  changes the app's level for when the run resumes). Mode 1 is restored level-first, mode 0
+  mode-first (with adaptive on, the phone picks the level from the light sensor at once, so the
+  exact old number isn't meaningful then). Not restored after a hard kill (Task Manager, `kill
+  -9`, power loss): the phone keeps the app's level with adaptive off until changed by hand.
+- **End detection is unaffected:** only the backlight changes, not the screen contents. Measured
+  on a still screen: screenshots at 100 % and 10 % differ by **0.00** (loop threshold: 6).
+- **Key a** (`give_back`): the phone's own level and mode back, and the app leaves brightness
+  alone — also across pauses — until **<** / **>**, which then start from the phone's level at
+  that moment (and save it anew: the end of the run restores that). Before any change it only
+  says "already the phone's own". The alternative without a key — switching adaptive on in the
+  phone's quick settings — also works, because the app never re-applies its level by itself,
+  except on resume and on the next key.
+- **Never blocking the run:** a background thread writes to the phone; a key press only
+  computes the new level and logs it. Quick presses collapse into one write of the last level,
+  and after the first change a press is a single `settings put` (no read-back, no mode). Pause
+  and the end of the run wait for the restore (at most 5 s). The first version wrote
+  synchronously, up to 6 `settings` calls per press: 0.4–4.6 s per press on the test phone
+  shortly after a restart (load average ~21) — the run froze meanwhile, felt as lag. Single
+  `settings` calls take ~0.15 s on a settled phone.
+- **A phone that refuses** (an error, or the value not reading back after the first write): one
+  log line, the run carries on, the keys do nothing.
+- **Tested (2026-10-22):** `tests/test_brightness.py` (simulated phone: stops, limits, restore,
+  pause, refusal, `--brightness` values); live, keys through a pseudo-terminal: < < from the
+  phone's level 8 (3 %) → 1 % (level 3, mode 0), p → the phone's own (8, adaptive), > while
+  paused → "applied when resumed", p → 5 % (13, mode 0), q → 8, adaptive; `--brightness 20` in a
+  background run → 51, mode 0, then back to 8 / adaptive after the stop file and after SIGTERM.
+  After the background writer and the key-reader fix: `<<<` and `>>` sent as bursts were all
+  handled within ~1 s (1 % → minimum ×2 → 5 % → 10 %, phone level 3 → 26), 2x locked on every
+  video, pause/resume and q restored as before. Not tried yet: the keys in the Windows app's
+  window.
+
 ## 5. How things were tested (and how to re-test)
 
 **Without a phone.** `uv run tests/test_ui_text.py` checks all language-dependent text
 matching, English and pt-BR (4.12); `uv run tests/test_pause_stats.py` checks the pause and
-statistics timing on a simulated clock (4.10, 4.11).
+statistics timing on a simulated clock (4.10, 4.11); `uv run tests/test_brightness.py` checks the
+brightness keys and restore on a simulated phone (4.13).
 
 **Live runs.** Run the script for a few minutes with `timeout -s INT 300 … < /dev/null > log`
 and read the log. To test keys without a person at the keyboard, feed them through a

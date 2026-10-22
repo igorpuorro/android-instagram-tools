@@ -282,6 +282,7 @@ The main ones (all of them: `--help`):
 | `--share-link` | **none** · followed · all | Share → Copy link; links collected in `runs/shared-links.txt` |
 | `--save` | **none** · followed · all | save them to your private Saved collection |
 | `--max-watch S` | **300** | stop watching a video after S seconds |
+| `--brightness PERCENT` | (unchanged) | phone screen brightness at start, 1–100 (keys **<** **>** change it; the phone's own is restored at the end) |
 
 "followed" = only for accounts you follow. Actions happen only for videos watched to the end, in
 the order of the buttons on screen (like → repost → share → save), and never twice: a post
@@ -303,7 +304,8 @@ there?) — e.g. `uv run feed_autoplay.py connect`; in the Windows app `feed_aut
 | **p** | pause (the phone is yours) / resume | **r** | repost mode |
 | **x** | 2x on / off (from the next video) | **c** | copy-link mode |
 | **w** | play mode | **b** | save mode |
-| **s** | statistics | **h** / **?** | help |
+| **<** / **>** | phone screen dimmer / brighter | **s** | statistics |
+| **a** | the phone's own brightness again (adaptive if it was) | **h** / **?** | help |
 | | | **q** | quit |
 
 Keys work when the tool runs in a terminal window, not in the background.

@@ -7,6 +7,7 @@
 --play all               # all = every video; followed = only accounts you follow
 --2x                     # play at 2x speed (key x switches it during a run)
 # --max-watch 300        # stop watching a video after this many seconds
+# --brightness 30        # phone screen brightness at start (keys < > change it while running)
 
 # actions on videos watched to the end: none, followed or all
 --like all

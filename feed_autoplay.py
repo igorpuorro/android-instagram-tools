@@ -13,7 +13,8 @@ Flow: find a video post in the feed -> tap it (opens full-screen player with sou
 
 Keys while running (h shows them):
   n = next video  p = pause (hand the phone over) / resume  x = 2x on/off  w = play mode
-  l = like mode  r = repost mode  c = copy-link mode  b = save mode  s = statistics  q = quit
+  l = like mode  r = repost mode  c = copy-link mode  b = save mode  < > = phone brightness
+  a = the phone's own brightness again  s = statistics  q = quit
 Without keys (background runs): create the file runs/STOP to stop cleanly; while the file
 runs/PAUSE exists the run is paused.
 
@@ -36,7 +37,7 @@ import time
 import traceback
 from pathlib import Path
 
-__version__ = "0.2.3"  # same as pyproject.toml; the Windows release tag is v<version>
+__version__ = "0.3.0"  # same as pyproject.toml; the Windows release tag is v<version>
 
 WINDOWS = os.name == "nt"
 # Running as the Windows app built by PyInstaller (packaging/, DEVELOPMENT.md 1): the bundled
@@ -133,6 +134,7 @@ class Keys:
 
     def __enter__(self):
         self.tty = sys.stdin.isatty()
+        self.pending = []  # keys already read from the terminal, not handed out yet
         if self.tty and not WINDOWS:
             self.fd = sys.stdin.fileno()
             self.old = termios.tcgetattr(self.fd)
@@ -154,9 +156,12 @@ class Keys:
                     return None
                 return ch.lower()
             return None
-        if select.select([sys.stdin], [], [], 0)[0]:
-            return sys.stdin.read(1).lower()
-        return None
+        # straight from the file descriptor, everything that arrived: reading one character
+        # through sys.stdin would pull keys typed together (< <, a held key) into Python's
+        # buffer, where select() can't see them -- they'd wait for the next key press
+        if not self.pending and select.select([self.fd], [], [], 0)[0]:
+            self.pending = list(os.read(self.fd, 1024).decode(errors="ignore").lower())
+        return self.pending.pop(0) if self.pending else None
 
 
 # Creating this file stops a run cleanly (final statistics), on any system and without a
@@ -266,12 +271,176 @@ class EndWatcher:
         self.proc.terminate()
 
 
+class Brightness:
+    """The phone's screen brightness, set by the app (keys < >, --brightness; DEVELOPMENT.md 4.13).
+
+    Through adb's `settings` (no root): the level (0..255 -- the setting's scale on every phone,
+    also where the display itself goes higher, e.g. Samsung's outdoor 365) and adaptive
+    brightness, which is switched off while the app sets the level (it would override it).
+    The phone's own level and mode are saved before the first change and put back by
+    restore() -- at the end of the run and while paused (the phone is the user's then).
+    Only the backlight changes: screenshots, and so the end-of-video frame comparison, are not
+    affected. If the phone refuses, it says so once and the run carries on.
+
+    The phone is written to by a background thread: a key press never waits for adb (a slow
+    moment of the phone or the Wi-Fi would freeze the run), quick presses collapse into one
+    write of the last level, and after the first change a press is a single `settings put`."""
+
+    LEVELS = (1, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100)  # percent stops of < and >
+    MAX = 255
+
+    def __init__(self, device):
+        self.device = device  # callable: the current uiautomator2 device (it changes on reconnect)
+        self.saved = None     # (level, mode) of the phone before the app's first change
+        self.pct = None       # the app's level in percent (None: never set)
+        self.held = False     # restored for a pause: changes only take effect on resume
+        self.broken = False
+        self._want = None     # (level, mode) the phone should have
+        self._applied = None  # (level, mode) last written by the thread
+        self._cond = threading.Condition()
+        self._thread = None
+
+    def _shell(self, cmd):
+        return self.device().shell(cmd).output.strip()
+
+    def _read(self):
+        level, mode = self._shell("settings get system screen_brightness; "
+                                  "settings get system screen_brightness_mode").split()[:2]
+        return int(level), int(mode)
+
+    def _fail(self, e):
+        if not self.broken:
+            log(f"  brightness can't be changed on this phone ({type(e).__name__}: {str(e)[:80]})")
+        self.broken = True
+        return False
+
+    # ---- background writer -----------------------------------------------------------------
+    def _worker(self):
+        while True:
+            with self._cond:
+                self._cond.wait_for(lambda: self._want != self._applied)
+                want, before = self._want, self._applied
+            level, mode = want
+            put_mode = f"settings put system screen_brightness_mode {mode}"
+            put_level = f"settings put system screen_brightness {level}"
+            # manual (0): mode first, or adaptive would override the level; adaptive (1): level
+            # first -- once adaptive is on, the phone picks the level from the light sensor
+            if before is not None and before[1] == mode:
+                cmd = put_level
+            else:
+                cmd = f"{put_mode}; {put_level}" if mode == 0 else f"{put_level}; {put_mode}"
+            try:
+                self._shell(cmd)
+                if before is None and self._read() != want:  # checked once, on the first change
+                    raise RuntimeError("the setting didn't stick")
+            except Exception as e:
+                self._fail(e)
+                with self._cond:
+                    self._applied = self._want  # nothing more to do
+                    self._cond.notify_all()
+                return
+            with self._cond:
+                self._applied = want
+                self._cond.notify_all()
+
+    def _request(self, want):
+        with self._cond:
+            self._want = want
+            self._cond.notify_all()
+        if self._thread is None:
+            self._thread = threading.Thread(target=self._worker, daemon=True)
+            self._thread.start()
+
+    def _wait(self, timeout=5.0):
+        """Until the thread has written what was asked (or gave up), at most `timeout` seconds."""
+        with self._cond:
+            self._cond.wait_for(lambda: self._want == self._applied or self.broken, timeout)
+
+    # ---- used by the app ---------------------------------------------------------------------
+    def _phone_own(self):
+        """The phone's level and mode before the app's first change (read once)."""
+        if self.saved is None:
+            self.saved = self._read()
+        return self.saved
+
+    def set(self, pct):
+        """Set the app's level (percent); returns whether it was accepted (stored while held)."""
+        if self.broken:
+            return False
+        try:
+            self._phone_own()
+        except Exception as e:
+            return self._fail(e)
+        self.pct = min(100, max(self.LEVELS[0], int(pct)))
+        if not self.held:
+            self._request((max(1, round(self.pct / 100 * self.MAX)), 0))
+        return True
+
+    def step(self, up):
+        """Next stop above (up) or below the current level; the first time from the phone's own."""
+        if self.broken:
+            return
+        if self.pct is not None:
+            current = self.pct
+        else:
+            try:
+                current = round(self._phone_own()[0] / self.MAX * 100)
+            except Exception as e:
+                self._fail(e)
+                return
+        stops = [x for x in self.LEVELS if (x > current if up else x < current)]
+        target = (min(stops) if up else max(stops)) if stops else current
+        if self.set(target):
+            edge = "" if stops else " (maximum)" if up else " (minimum)"
+            later = " (applied when resumed)" if self.held else ""
+            log(f"☀ brightness {self.pct}%{edge}{later}   (< dimmer · > brighter)")
+
+    def restore(self):
+        """Back to the phone's own level and mode (end of run, pause); safe to call any time.
+        Waits until it's written (at most a few seconds)."""
+        if self.saved is None or self.broken or self.held:
+            return
+        self._request(self.saved)
+        self._wait()
+
+    def hold(self):
+        """Pause: give the phone its own brightness back until release()."""
+        self.restore()
+        self.held = self.pct is not None
+
+    def release(self):
+        """Resume: the app's level again (also one changed while paused)."""
+        if self.held:
+            self.held = False
+            self.set(self.pct)
+
+    def give_back(self):
+        """Key a: the phone's own brightness (and adaptive mode, if it had it) again, and the app
+        leaves it alone -- also after a pause -- until < or > is pressed (which then start from
+        the phone's level at that moment)."""
+        if self.broken:
+            return
+        if self.pct is None:
+            log("☀ brightness: already the phone's own   (< > to set it)")
+            return
+        own = self.saved
+        if not self.held:
+            self.restore()
+        self.pct, self.held, self.saved = None, False, None
+        kind = "adaptive" if own and own[1] == 1 else "manual"
+        log(f"☀ brightness: the phone's own ({kind})   (< > to set it again)")
+
+    def describe(self):
+        return f"{self.pct}%" if self.pct is not None else "the phone's own"
+
+
 class Player:
     def __init__(self, d, args, keys, ends=None):
         self.d = d
         self.args = args
         self.keys = keys
         self.ends = ends  # EndWatcher, or None to rely on frame comparison only
+        self.brightness = Brightness(lambda: self.d)
         self.w, self.h = d.window_size()
         self.seen = []  # recently watched post keys, to avoid replaying after Back
         self.ended_by = None  # how the last watch() ended, for the stats
@@ -432,6 +601,10 @@ class Player:
             self.args.speed2x = not self.args.speed2x
             new = "on" if self.args.speed2x else "off"
             log(f"2x: {new} from the next video   ({cycle_text(SPEED_MODES, new)})")
+        elif k in ("<", ">"):
+            self.brightness.step(up=k == ">")
+        elif k == "a":
+            self.brightness.give_back()
         elif k == "s":
             self.report()
         elif k in ("h", "?"):
@@ -457,6 +630,7 @@ class Player:
                 ref = (self.player_author(), self.frame(self.player_box()))
             except Exception:  # can't tell later whether it's unchanged: start over on resume
                 ref = None
+        self.brightness.hold()  # the phone's own brightness while it is the user's
         how = f"delete {PAUSE_FILE} to resume" if by_file else "p to resume"
         log(f"⏸ paused: the phone is yours ({how})")
         try:
@@ -474,6 +648,7 @@ class Player:
             PAUSE_FILE.unlink()  # resumed with p while the file exists: don't pause again
         except OSError:
             pass
+        self.brightness.release()
         if ref and self.same_paused_video(*ref):
             self.d.click(self.w // 2, self.h // 2)
             log(f"▶ resumed after {self.hm(t1 - t0)}")
@@ -521,6 +696,10 @@ class Player:
         speed = "x  2x speed".ljust(20) + cycle_text(SPEED_MODES, "on" if a.speed2x else "off")
         log(f"              {speed:<45} from the next video")
         log(f"              {mode('w')}")
+        light = "<  >  brightness".ljust(20) + "dimmer / brighter"
+        log(f"              {light:<45} now {self.brightness.describe()}")
+        own = "a  brightness".ljust(20) + "the phone's own again"
+        log(f"              {own:<45} (adaptive if it was)")
         log(f"   actions    {mode('l')}")
         log(f"   (screen    {mode('r')}")
         log(f"    order)    {mode('c')}")
@@ -1370,6 +1549,8 @@ def startup_report(d, args, keys_on, settings_from=None):
         f"max {args.max_watch:g} s per video{extra}")
     log(f"   actions    like {args.like} · repost {args.repost} · copy link {args.share_link} · "
         f"save {args.save}")
+    if args.brightness:
+        log(f"   screen     brightness {args.brightness}% (the phone's own is restored at the end)")
     if settings_from:
         log(f"   settings   from {settings_from}")
     log(f"   end        " + ("Instagram's log + frame comparison" if args.use_log else "frame comparison only (--no-log)"))
@@ -1604,6 +1785,17 @@ def entry():
     sys.exit(code)
 
 
+def percent(value):
+    """argparse type: an integer 1..100."""
+    try:
+        n = int(value)
+    except ValueError:
+        n = 0
+    if not 1 <= n <= 100:
+        raise argparse.ArgumentTypeError(f"{value!r} is not a percentage from 1 to 100")
+    return n
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
 
@@ -1615,6 +1807,9 @@ def main():
                    help="lock 2x playback speed for each video (default: normal speed; key x toggles it)")
     g.add_argument("--loops", type=int, default=1, help="how many times to watch each video (default 1)")
     g.add_argument("--max-watch", type=float, default=300, help="max seconds per video (default 300)")
+    g.add_argument("--brightness", type=percent, metavar="PERCENT",
+                   help="set the phone's screen brightness at start, 1-100 %% (keys < > change it "
+                        "while running; the phone's own is restored at the end; default: unchanged)")
 
     g = p.add_argument_group("actions on videos watched to the end (done in screen order)")
     g.add_argument("--like", choices=LIKE_MODES, default="followed",
@@ -1680,11 +1875,14 @@ def main():
     with Keys() as keys:
         player = Player(d, args, keys, ends)
         try:
+            if args.brightness:
+                player.brightness.set(args.brightness)
             player.run()
         except (Quit, KeyboardInterrupt):
             player.report()
             log("bye")
         finally:
+            player.brightness.restore()  # the phone's own brightness and mode back
             if ends:
                 ends.stop()
 

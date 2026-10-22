@@ -44,6 +44,8 @@ The first time, Windows may say "Windows protected your PC": click "More info", 
 Keys while it runs (in its window):
   n next video    p pause (the phone is yours) / resume    x 2x on/off
   w play mode     l like mode    r repost mode    c copy-link mode    b save mode
+  < > phone screen dimmer / brighter (your own brightness comes back at the end)
+  a   your own brightness again now (adaptive if it was)
   s statistics    h / ? help     q quit
 
 Using the phone in between: press p, use the phone, press p again. q stops it: the final
@@ -65,6 +67,7 @@ first start sets play all, 2x and all actions)
   --share-link none|followed|all Share > Copy link (default none)
   --save none|followed|all       save to your private Saved collection (default none)
   --max-watch S                  stop watching a video after S seconds (default 300)
+  --brightness PERCENT           phone screen brightness at start, 1-100 (default: unchanged)
 All options: feed_autoplay.exe --help
 
 
