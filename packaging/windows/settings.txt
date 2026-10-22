@@ -10,6 +10,6 @@
 
 # actions on videos watched to the end: none, followed or all
 --like all
---repost followed        # reposts show on your profile; Instagram limits them
+--repost all             # reposts show on your profile; Instagram limits them
 --share-link all         # copies each link into runs\shared-links.txt
 --save all               # private Saved collection

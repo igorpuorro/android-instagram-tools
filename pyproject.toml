@@ -1,6 +1,6 @@
 [project]
 name = "android-instagram-tools"
-version = "0.2.2"
+version = "0.2.3"
 description = "Tools that drive the Instagram app on an Android phone over adb (first tool: feed_autoplay)"
 readme = "README.md"
 # The pinned versions below have ready-made wheels up to Python 3.13; uv fetches a matching

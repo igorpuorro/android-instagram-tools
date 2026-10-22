@@ -96,7 +96,7 @@ Keys while running (only when started from a terminal):
 At startup the app prints a block with the phone, the Instagram version and the settings:
 
 ```
-── feed_autoplay 0.2.2 ─────────────────────────────────────────
+── feed_autoplay 0.2.3 ─────────────────────────────────────────
    phone      Samsung SM-A515F · Android 11 · serial R58N91XKQZT · Wi-Fi
    instagram  451.0.0.53.80
    playback   play all · 2x on · max 300 s per video
@@ -157,7 +157,7 @@ and gets fewer antivirus false alarms.
   bundled files from `BUNDLE_DIR` (PyInstaller's `_internal`), `RUNS` and `settings.txt` next to
   the exe (`APP_DIR`) whatever the current folder; `ADBUTILS_ADB_PATH` set to the bundled adb (not
   one found on PATH); started without options it reads `settings.txt`, created on first start
-  from `packaging/windows/settings.txt` (play all · 2x · like all · repost followed · copy link all · save all since 0.2.1 — the app's own
+  from `packaging/windows/settings.txt` (play all · 2x · like all · repost all · copy link all · save all since 0.2.3; repost followed in 0.2.1–0.2.2 — the app's own
   choice, unlike the command-line defaults, which stay cautious); it isn't in the zip, so
   unzipping an update over the folder keeps it — new defaults reach new installs only; a
   double-clicked exe owns its console (`GetConsoleProcessList`), so `entry()` waits for Enter at
@@ -199,7 +199,8 @@ and gets fewer antivirus false alarms.
   SmartScreen / Defender reacted.
 - **Releases:** v0.2.0 (first Windows app), v0.2.1 (new default `settings.txt`; `.sha256` with LF
   line endings so `sha256sum -c` works on Linux/macOS), v0.2.2 (`disconnect.bat` / `disconnect`;
-  `connect.bat` renamed from "Connect phone.bat"; `pause.bat` / `stop.bat` removed).
+  `connect.bat` renamed from "Connect phone.bat"; `pause.bat` / `stop.bat` removed), v0.2.3 (default
+  `settings.txt`: repost all instead of followed).
 
 **In a container (Docker or Podman — no Python on the host):** see `CONTAINER.md`.
 Image `feed-autoplay` (named in `compose.yaml`; the code is copied in, so rebuild after code
