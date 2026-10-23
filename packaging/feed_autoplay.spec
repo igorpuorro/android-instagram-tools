@@ -1,4 +1,5 @@
-# PyInstaller spec: feed_autoplay as a one-folder app (DEVELOPMENT.md 1, "Windows app").
+# PyInstaller spec: feed_autoplay and profile_blocker as one one-folder app (DEVELOPMENT.md 1,
+# "Windows app"): two exes next to each other, sharing one _internal folder.
 # Built by packaging/build.py -- on Windows for the release, on Linux to test the same bundle.
 import re
 import sys
@@ -20,17 +21,14 @@ datas += collect_data_files("adbutils", includes=["binaries/*"])
 # default settings.txt, copied next to the exe on first start (not in the zip itself, so
 # unzipping an update over the folder keeps the user's settings)
 datas += [(str(ROOT / "packaging" / "windows" / "settings.txt"), ".")]
+# profile_blocker's example profiles.txt, created next to the exe on first start (same reason)
+datas += [(str(ROOT / "packaging" / "windows" / "profiles.txt"), ".")]
 
-a = Analysis(
-    [str(ROOT / "feed_autoplay.py")],
-    pathex=[str(ROOT)],
-    datas=datas,
-    excludes=["tkinter"],
-)
-pyz = PYZ(a.pure)
 
-version_file = None
-if sys.platform == "win32":  # file properties of the exe (also a small plus for antivirus heuristics)
+def version_info(name):
+    """File properties of the exe (also a small plus for antivirus heuristics); Windows only."""
+    if sys.platform != "win32":
+        return None
     from PyInstaller.utils.win32.versioninfo import (FixedFileInfo, StringFileInfo, StringStruct,
                                                      StringTable, VarFileInfo, VarStruct, VSVersionInfo)
     nums = tuple(int(x) for x in VERSION.split(".")) + (0,)
@@ -38,23 +36,30 @@ if sys.platform == "win32":  # file properties of the exe (also a small plus for
         ffi=FixedFileInfo(filevers=nums, prodvers=nums),
         kids=[StringFileInfo([StringTable("040904B0", [
                   StringStruct("ProductName", "android-instagram-tools"),
-                  StringStruct("FileDescription", "feed_autoplay"),
+                  StringStruct("FileDescription", name),
                   StringStruct("FileVersion", VERSION),
                   StringStruct("ProductVersion", VERSION),
-                  StringStruct("InternalName", "feed_autoplay"),
-                  StringStruct("OriginalFilename", "feed_autoplay.exe")])]),
+                  StringStruct("InternalName", name),
+                  StringStruct("OriginalFilename", f"{name}.exe")])]),
               VarFileInfo([VarStruct("Translation", [1033, 1200])])])
-    version_file = Path(workpath) / "version_info.txt"
-    version_file.write_text(str(info), encoding="utf-8")
+    path = Path(workpath) / f"version_info_{name}.txt"
+    path.write_text(str(info), encoding="utf-8")
+    return str(path)
 
-exe = EXE(
-    pyz,
-    a.scripts,
-    [],
-    exclude_binaries=True,  # one folder: the exe plus _internal/, nothing unpacked at start
-    name="feed_autoplay",
-    console=True,
-    upx=False,  # compressed exes are flagged by antivirus more often
-    version=str(version_file) if version_file else None,
-)
-coll = COLLECT(exe, a.binaries, a.datas, name="feed_autoplay", upx=False)
+
+parts = []
+for name in ("feed_autoplay", "profile_blocker"):  # profile_blocker imports feed_autoplay
+    a = Analysis([str(ROOT / f"{name}.py")], pathex=[str(ROOT)], datas=datas, excludes=["tkinter"])
+    exe = EXE(
+        PYZ(a.pure),
+        a.scripts,
+        [],
+        exclude_binaries=True,  # one folder: the exe plus _internal/, nothing unpacked at start
+        name=name,
+        console=True,
+        upx=False,  # compressed exes are flagged by antivirus more often
+        version=version_info(name),
+    )
+    parts += [exe, a.binaries, a.datas]
+# one folder for both: the shared files (Python, packages, adb) are in _internal once
+coll = COLLECT(*parts, name="feed_autoplay", upx=False)

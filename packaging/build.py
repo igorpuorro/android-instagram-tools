@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the feed_autoplay app as a one-folder zip (DEVELOPMENT.md 1, "Windows app").
+"""Build the Windows app (feed_autoplay + profile_blocker) as a one-folder zip (DEVELOPMENT.md 1).
 
   uv run --group build packaging/build.py
 
@@ -25,9 +25,11 @@ ROOT = Path(__file__).resolve().parent.parent
 BUILD = ROOT / "build"
 WINDOWS = os.name == "nt"
 PLATFORM = "windows" if WINDOWS else "linux"
-# files next to the exe (Windows only: connect.bat, disconnect.bat, README.txt); settings.txt
-# is bundled instead: the app creates it on first start, so updates keep it
-EXTRAS = sorted(f for f in (ROOT / "packaging" / "windows").iterdir() if f.name != "settings.txt")
+# files next to the exes (Windows only: connect.bat, disconnect.bat, unblock.bat, README.txt);
+# settings.txt and profiles.txt are bundled instead: the apps create them on first start, so
+# updates keep the user's own
+CREATED = ("settings.txt", "profiles.txt")
+EXTRAS = sorted(f for f in (ROOT / "packaging" / "windows").iterdir() if f.name not in CREATED)
 # must never be in the bundle (private data, see .gitignore)
 FORBIDDEN = re.compile(r"(^|/)(runs|\.env|traces|traces_1x|icon_samples|\.git)(/|$)")
 
@@ -103,13 +105,16 @@ def main():
             shutil.copy(f, app / f.name)
     collect_licenses(app / "LICENSES")
 
-    exe = app / ("feed_autoplay.exe" if WINDOWS else "feed_autoplay")
-    for cmd in (["check"], ["--help"], ["adb", "version"]):
+    ext = ".exe" if WINDOWS else ""
+    for name, cmd in (("feed_autoplay", ["check"]), ("feed_autoplay", ["--help"]),
+                      ("feed_autoplay", ["adb", "version"]), ("profile_blocker", ["--help"])):
+        exe = app / (name + ext)
         print(f"$ {exe.name} {' '.join(cmd)}", flush=True)
         subprocess.run([str(exe), *cmd], check=True, stdin=subprocess.DEVNULL, cwd=BUILD)
 
     shutil.rmtree(app / "runs", ignore_errors=True)  # in case the checks created them
-    (app / "settings.txt").unlink(missing_ok=True)
+    for name in CREATED:
+        (app / name).unlink(missing_ok=True)
     names = [p.relative_to(app).as_posix() for p in app.rglob("*")]
     bad = [n for n in names if FORBIDDEN.search(n)]
     if bad:

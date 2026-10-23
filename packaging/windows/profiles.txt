@@ -1,0 +1,7 @@
+# profile_blocker: the profiles to block, one per line -- used when profile_blocker.exe is
+# started without options (double-click). Each line: name, @name or the profile's link
+# (https://www.instagram.com/name/). "#" starts a comment. unblock.bat unblocks them again.
+# Replace the examples below with the profiles you want blocked:
+# some.profile
+# @another_profile
+# https://www.instagram.com/third.profile/

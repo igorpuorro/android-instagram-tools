@@ -1,8 +1,11 @@
 feed_autoplay for Windows
 =========================
 
-Plays the videos of your Instagram home timeline on your Android phone, one after another,
-optionally at 2x, liking / reposting / copying links / saving them. Nothing to install.
+Two tools for Instagram on your Android phone, nothing to install:
+- feed_autoplay.exe plays the videos of your home timeline one after another, optionally at
+  2x, liking / reposting / copying links / saving them;
+- profile_blocker.exe blocks every profile in a list (unblock.bat unblocks them again) --
+  see "Blocking profiles" below.
 
 Instagram's terms don't allow automated use. Acting at volume can get the account limited.
 Use it at your own risk, with sensible settings.
@@ -71,6 +74,22 @@ first start sets play all, 2x and all actions)
 All options: feed_autoplay.exe --help
 
 
+Blocking profiles (profile_blocker.exe)
+---------------------------------------
+1. Double-click profile_blocker.exe once: it creates profiles.txt next to it and stops.
+2. Open profiles.txt with Notepad and put the profiles to block in it, one per line: the
+   name, @name or the profile's link (https://www.instagram.com/name/). "#" starts a comment.
+3. Double-click profile_blocker.exe again: it opens each profile, taps ... > Block and confirms
+   with the plain Block (never "Block and Report"), and checks the profile then shows Unblock.
+   It waits 20 seconds between profiles (Instagram limits how fast accounts may act).
+To undo it: double-click unblock.bat (unblocks the profiles in profiles.txt).
+Keys in its window: p pause / resume, s statistics, h help, q quit.
+Results: runs\blocked-profiles.txt. A later run skips the profiles already blocked, so a
+stopped run just carries on. To try without blocking anything, in a terminal in this folder:
+profile_blocker.exe --dry-run (goes as far as the "Block <name>?" question, then cancels).
+Instagram in English or Brazilian Portuguese. All options: profile_blocker.exe --help
+
+
 Phone-specific settings
 -----------------------
 Xiaomi, Redmi, POCO (HyperOS / MIUI) -- if the app stops right at start with
@@ -92,7 +111,7 @@ Troubleshooting
 - Check the app's own files: feed_autoplay.exe check (in a terminal in this folder).
 - Updating: download the new zip from
   https://github.com/igorpuorro/android-instagram-tools/releases/latest (always the newest
-  version) and unzip it over this folder; your settings.txt and the
+  version) and unzip it over this folder; your settings.txt, profiles.txt and the
   runs folder are kept (they aren't in the zip). If Windows says a file is in use, run
   disconnect.bat first (or restart the PC). Since 0.2.2 "Connect phone.bat" is called
   connect.bat, and pause.bat / stop.bat are gone (use p and q in the window): delete the
