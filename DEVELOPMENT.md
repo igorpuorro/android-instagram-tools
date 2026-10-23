@@ -219,8 +219,9 @@ and gets fewer antivirus false alarms.
   blocked accounts list, ~2× faster; 4.14; zip and release named android-instagram-tools),
   v0.5.1 (the zip's folder renamed from `feed_autoplay` to `android-instagram-tools`; fixes:
   scrolling to Blocked (`UiObjectNotFoundError` in 0.5.0), unblocking through the list). The release pages of v0.2.0–v0.2.2 were deleted
-  on 2026-10-22 (superseded; nobody depended on them); their **tags are kept** as the record of
-  each version. To rebuild an old zip: Actions → windows-release → Run workflow → pick the
+  on 2026-10-22 (superseded; nobody depended on them) and the one of v0.5.0 on 2026-10-23
+  (superseded by v0.5.1 the same day: its scrolling bug); their **tags are kept** as the record
+  of each version. To rebuild an old zip: Actions → windows-release → Run workflow → pick the
   tag; the zip comes as the run's artifact (a manual run doesn't publish a release).
 
 **In a container (Docker or Podman — no Python on the host):** see `CONTAINER.md`.
