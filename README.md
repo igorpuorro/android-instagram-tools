@@ -36,7 +36,8 @@ flowchart TD
 | **Best for** | everyday use on Linux/macOS | Windows, following the code (`git pull`) | no Python on the computer; same setup everywhere | Windows, the simplest |
 | **Status** | tested on Linux; macOS expected to work | tested on Windows 11, USB and Wi-Fi | tested on Linux; not yet tried on Windows | tested on Windows 11, USB and Wi-Fi |
 
-*USB is the more stable connection for long runs.* Whichever you choose, the tool, its options and
+*USB is the more stable connection for long runs.* Some phone brands need an extra setting
+first — see [Phone-specific settings](#phone-specific-settings). Whichever you choose, the tool, its options and
 keys are the same — see the [feed_autoplay reference](#feed_autoplay-reference).
 
 ---
@@ -339,6 +340,23 @@ of videos that hit the time limit (`maxwatch-*.npz`).
 - **Mirroring (optional):** [scrcpy](https://github.com/Genymobile/scrcpy) shows the phone on
   the computer — Linux `apt install scrcpy` or `snap install scrcpy`, macOS `brew install scrcpy`,
   Windows: the zip from its releases page. The tools don't need it.
+
+### Phone-specific settings
+
+Settings some phone brands need on top of the phone preparation above.
+
+**Xiaomi, Redmi, POCO (HyperOS / MIUI)**
+
+*Symptom:* right at start, `error: RPCUnknownError: … java.lang.SecurityException: Injecting
+input events requires the caller …`, repeated on every retry — the phone blocks taps from USB
+debugging.
+
+*Fix:*
+1. Settings → **Additional settings** → **Developer options**.
+2. Switch on **USB debugging (Security settings)**. If it won't switch on: sign in to a Xiaomi
+   account and turn mobile data on, then try again.
+3. Switch on **Install via USB**.
+4. Unplug and replug the USB cable, accept the prompt on the phone, then start feed_autoplay again.
 
 ---
 

@@ -799,6 +799,16 @@ Any test that taps Repost must check `repost_state()` before **every** tap, incl
   `u2.connect()` without a serial then fails with "more than one device/emulator".
   `pick_serial()` groups entries by `ro.serialno` and picks one if they're all the same phone;
   with several different phones it lists them and asks for `-s`.
+- **Xiaomi / Redmi / POCO (HyperOS, MIUI) block simulated input from USB debugging** unless
+  Developer options → "USB debugging (Security settings)" is on (it may need a Xiaomi account
+  and mobile data to switch on; "Install via USB" for uiautomator2's helper app). Without it the
+  very first tap (the Home tab, `ensure_feed`) fails with `RPCUnknownError: -32001
+  java.lang.SecurityException: Injecting input events requires the caller … INJECT_EVENTS`, and
+  the run's error back-off retries forever. Reported 2026-10-23 by the owner on another computer:
+  Redmi Note 13 Pro 5G (2312DRA50G), Android 16, USB, Instagram 452.1.0.53.64 — the fix is
+  documented (README "Phone-specific settings", the zip's README.txt) but not yet confirmed on
+  that phone; that phone (1220×2712, Instagram 452) is otherwise untested too. Idea: recognise
+  this error and stop with the one-line fix instead of retrying.
 - The system `/usr/bin/adb` disappeared at some point; `EndWatcher` now runs
   `adbutils.adb_path()` (the adb bundled with the pip package). Without this fix the log signal
   silently failed and only the slower frame fallback worked.

@@ -71,8 +71,20 @@ first start sets play all, 2x and all actions)
 All options: feed_autoplay.exe --help
 
 
+Phone-specific settings
+-----------------------
+Xiaomi, Redmi, POCO (HyperOS / MIUI) -- if the app stops right at start with
+"SecurityException: Injecting input events requires ...":
+1. Settings > Additional settings > Developer options.
+2. Switch on "USB debugging (Security settings)". If it won't switch on: sign in to a Xiaomi
+   account and turn mobile data on, then try again.
+3. Switch on "Install via USB".
+4. Unplug and replug the USB cable, accept the prompt on the phone, start feed_autoplay again.
+
+
 Troubleshooting
 ---------------
+- "SecurityException: Injecting input events" right at start: see Phone-specific settings.
 - "no phone connected": USB -- cable, driver, USB debugging, the prompt on the phone;
   Wi-Fi -- run connect.bat again.
 - connect.bat seems stuck at "Starting adb": a freshly started adb first looks for phones on
