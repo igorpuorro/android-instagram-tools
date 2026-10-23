@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""profile_blocker's list parsing, results file and profile screens -- no phone needed.
+"""profile_blocker's list parsing, results file and screen checks -- no phone needed.
 
 Screens are shaped like the ones recorded on Instagram 452 (made-up account and texts).
 
@@ -50,24 +50,7 @@ with tempfile.TemporaryDirectory() as tmp:
     check("done for unblock", pb.done_before("unblock", log), {"daily_news"})
     check("missing file", pb.done_before("block", Path(tmp) / "none.txt"), set())
 
-# ---- profile screens -------------------------------------------------------------------------
-title = node("action_bar_title", text="chef.marco", desc="chef.marco")
-check("profile", pb.profile_state(screen(title, node("profile_header_follow_button", text="Follow")),
-                                  "chef.marco"), "profile")
-check("blocked", pb.profile_state(screen(title, node("profile_header_follow_button", text="Unblock")),
-                                  "Chef.Marco"), "blocked")
-check("pt-BR blocked", pb.profile_state(screen(title, node(text="Desbloquear")), "chef.marco"), "blocked")
-check("not found", pb.profile_state(screen(node("no_found_text", text="User not found")), "chef.marco"),
-      "not found")
-check("other profile", pb.profile_state(screen(node("action_bar_title", text="daily_news"),
-                                               node(text="Follow")), "chef.marco"), "other")
-check("name only in system UI", pb.profile_state(screen(node(text="chef.marco", pkg="com.android.systemui")),
-                                                 "chef.marco"), "other")
-pt_title = node("action_bar_title", text="chef.marco", desc="chef.marco")
-check("pt-BR profile", pb.profile_state(screen(pt_title, node("profile_header_follow_button", text="Seguir")),
-                                        "chef.marco"), "profile")
-check("pt-BR not found", pb.profile_state(screen(node("no_found_text", text="Usuário não encontrado")),
-                                          "chef.marco"), "not found")
+# ---- texts ----------------------------------------------------------------------------------
 check("pt-BR options", bool(re.fullmatch(pb.exact("options"), "Opções")), True)
 check("pt-BR unblock", bool(re.fullmatch(pb.exact("unblock"), "Desbloquear")), True)
 check("menu item regex", [t for t in ("Block", "Unblock", "Block and Report", "Bloquear", "Desbloquear", "Bloquear e denunciar")
@@ -106,6 +89,14 @@ check("question en", pb.block_question(screen(node("igds_headline_headline", tex
 check("blocking progress", pb.blocking(screen(node("message", text="Bloqueando..."))), True)
 check("blocking progress en", pb.blocking(screen(node("message", text="Blocking..."))), True)
 check("no progress", pb.blocking(blocked), False)
+
+dialog = screen(node("igds_alert_dialog_headline", text="Unblock The New York Times (nytimes)?"),
+                node("igds_alert_dialog_primary_button", text="Unblock"))
+check("unblock question", pb.unblock_question(dialog, "nytimes"), True)
+check("unblock question other name", pb.unblock_question(dialog, "nytimes79"), False)
+check("unblock question pt-BR", pb.unblock_question(screen(node("igds_alert_dialog_headline",
+                                                                 text="Desbloquear chef.marco?")), "chef.marco"), True)
+check("unblock question no dialog", pb.unblock_question(blocked, "chef.marco"), False)
 
 for f in failures:
     print("FAIL", f)

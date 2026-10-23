@@ -62,4 +62,5 @@ for name in ("feed_autoplay", "profile_blocker"):  # profile_blocker imports fee
     )
     parts += [exe, a.binaries, a.datas]
 # one folder for both: the shared files (Python, packages, adb) are in _internal once
-coll = COLLECT(*parts, name="feed_autoplay", upx=False)
+# the zip's one top-level folder, named after the project (feed_autoplay up to 0.5.0)
+coll = COLLECT(*parts, name="android-instagram-tools", upx=False)

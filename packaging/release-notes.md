@@ -4,7 +4,8 @@ nothing to install (no Python, no uv, no git):
   at 2x, liking / reposting / copying links / saving them;
 - **`profile_blocker.exe`** *(0.5.0: about twice as fast)* blocks every profile in a list (`profiles.txt`,
   created on its first start), through your blocked accounts list (Bloqueados → +);
-  **`unblock.bat`** unblocks them again. Tested with Instagram in Brazilian Portuguese.
+  **`unblock.bat`** unblocks them again (0.5.1: also through the list). Instagram in English
+  or Brazilian Portuguese.
 
 1. Download `android-instagram-tools-windows-<version>.zip` below and unzip it (e.g. to your Desktop).
 2. Prepare the phone: Developer options, USB or Wireless debugging — see `README.txt` in the folder.
@@ -20,7 +21,10 @@ anyway** (the app isn't signed with a paid certificate). Check the download with
 same value.
 
 **Updating:** run `disconnect.bat`, then unzip the new version over the old folder —
-`settings.txt`, `profiles.txt` and `runs` are kept. (Up to 0.2.1 the folder also had `Connect phone.bat` — now
+`settings.txt`, `profiles.txt` and `runs` are kept. **From 0.5.0 or older** the folder in the zip
+was called `feed_autoplay`; now it is `android-instagram-tools`: copy your `settings.txt`,
+`profiles.txt` and `runs` folder from the old folder into the new one once, then delete the old
+folder. (Up to 0.2.1 the folder also had `Connect phone.bat` — now
 `connect.bat` — `pause.bat` and `stop.bat`: delete them; use **p** and **q** in the app's window.)
 
 > ⚠ Instagram's terms don't allow automated use. Acting at volume can get the account

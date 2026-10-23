@@ -88,7 +88,7 @@ Keys in its window: p pause / resume, s statistics, h help, q quit.
 Results: runs\blocked-profiles.txt. A later run skips the profiles already blocked, so a
 stopped run just carries on. To try without blocking anything, in a terminal in this folder:
 profile_blocker.exe --dry-run (goes as far as the "Block <name>?" question, then cancels).
-Tested with Instagram in Brazilian Portuguese (English not fully checked yet).
+Works with Instagram in English and Brazilian Portuguese.
 All options: profile_blocker.exe --help
 
 
@@ -114,7 +114,10 @@ Troubleshooting
 - Updating: download the new zip from
   https://github.com/igorpuorro/android-instagram-tools/releases/latest (always the newest
   version) and unzip it over this folder; your settings.txt, profiles.txt and the
-  runs folder are kept (they aren't in the zip). If Windows says a file is in use, run
+  runs folder are kept (they aren't in the zip). From 0.5.0 or older: the folder in the
+  zip was called feed_autoplay, now android-instagram-tools -- copy settings.txt,
+  profiles.txt and the runs folder from the old folder into the new one once, then
+  delete the old folder. If Windows says a file is in use, run
   disconnect.bat first (or restart the PC). Since 0.2.2 "Connect phone.bat" is called
   connect.bat, and pause.bat / stop.bat are gone (use p and q in the window): delete the
   old files.

@@ -6,8 +6,8 @@ profile: + (top right) -> search the username -> Block on the row of exactly tha
 confirm "Block <name>?" -> back on the blocked accounts list, check the profile is in it with
 Unblock. An account already blocked doesn't show up in the search: then the list is looked
 through to tell "already blocked" from "not found".
---unblock (the earlier route, through the profile): open the profile (instagram.com/<name> link)
--> its Unblock button -> confirm "Unblock <name>?" -> check it shows Follow.
+--unblock: the same list -> the profile's row -> Unblock -> confirm "Unblock ... (<name>)?" ->
+check the row is gone.
 Each result goes to runs/blocked-profiles.txt; profiles an earlier run already blocked (or, with
 --unblock, unblocked) are skipped (--recheck looks at them again).
 
@@ -44,21 +44,18 @@ __version__ = fa.__version__
 
 # Instagram UI texts this tool relies on, per app language (as UI_TEXT in feed_autoplay,
 # DEVELOPMENT.md 4.12): English first, then pt-BR -- both recorded on Instagram 452 (4.14), except
-# "More options", "Mais opções" and "Esta página não está disponível" (fallbacks, not seen).
+# "More options" and "Mais opções" (fallbacks, not seen).
 # Every check accepts any of them.
 UI_TEXT = {
-    "options": ("Options", "More options", "Opções", "Mais opções"),  # content-desc of the ⋯ / menu button
+    "options": ("Options", "More options", "Opções", "Mais opções"),  # content-desc of your profile's menu
     "block": ("Block", "Bloquear"),                  # row button, confirmation ("Block <name>?")
-    "unblock": ("Unblock", "Desbloquear"),           # profile / row button of a blocked account
-    # the blocked accounts list: settings row, screen title, + button (content-desc); English
-    # not recorded yet (pt-BR recorded on Instagram 452)
+    "unblock": ("Unblock", "Desbloquear"),           # row button of a blocked account, its dialog
+    # the blocked accounts list: settings row, screen title, + button (content-desc)
     "blocked_row": ("Blocked", "Bloqueados"),
     "blocked_title": ("Blocked accounts", "Contas bloqueadas"),
     "settings_title": ("Settings and activity", "Configurações e atividade"),
     "add": ("Add", "Adicionar"),
     "blocking": ("Blocking", "Bloqueando"),          # progress dialog after confirming ("Bloqueando...")
-    "not_found": ("Sorry, this page isn't available", "User not found",
-                  "Esta página não está disponível", "Usuário não encontrado"),
 }
 PROFILES_FILE = APP_DIR / "profiles.txt"  # the Windows app's list, when started without one
 DONE_LOG = RUNS / "blocked-profiles.txt"  # one line per profile handled: time, name, outcome
@@ -160,27 +157,18 @@ def blocking(xml):
                for n in nodes(xml))
 
 
+def unblock_question(xml, name):
+    """The unblock dialog asks about exactly `name`: "Unblock The New York Times (nytimes)?"."""
+    return any(n["rid"] == fa.RID + "igds_alert_dialog_headline" and n["text"].startswith(UI_TEXT["unblock"])
+               and (f"({name.lower()})?" in n["text"].lower() or n["text"].lower().endswith(f" {name.lower()}?"))
+               for n in nodes(xml))
+
+
 def block_question(xml, name):
     """The confirmation sheet asks to block exactly `name` ("Block <name>?")."""
     want = {f"{w} {name}?".lower() for w in UI_TEXT["block"]}
     return any(n["rid"] == fa.RID + "igds_headline_headline" and n["text"].lower() in want
                for n in nodes(xml))
-
-
-def profile_state(xml, name):
-    """What the screen shows for profile `name`: "not found", "blocked" (Unblock button),
-    "profile" (that profile, not blocked) or "other" (loading, or some other screen)."""
-    ns = [n for n in nodes(xml) if n["pkg"] == PKG]
-    texts = [n["text"] for n in ns] + [n["desc"] for n in ns]
-    if any(t.startswith(nf) for t in texts for nf in UI_TEXT["not_found"]):
-        return "not found"
-    # the username must be on screen as a text of its own (the action bar title): never act on
-    # whatever profile happens to be open
-    if not any(t.lower() == name.lower() for t in texts):
-        return "other"
-    if any(re.fullmatch(exact("unblock"), n["text"]) for n in ns):
-        return "blocked"
-    return "profile"
 
 
 class Blocker:
@@ -289,87 +277,30 @@ class Blocker:
                 return r or None
             time.sleep(0.5)
 
-    def open_profile(self, name, want=None):
-        """Open the profile in the app; its state (profile_state) once it has loaded. With
-        `want`, wait up to 10 s for that state: right after a block / unblock the profile can
-        still show the old state for a moment."""
-        if self.d.app_current().get("package") != PKG:
-            self.d.app_start(PKG)
-            time.sleep(3)
-        # name is a checked username ([A-Za-z0-9._]): safe in the shell command
-        self.d.shell(f"am start -a android.intent.action.VIEW -p {PKG} "
-                     f"-d https://www.instagram.com/{name}/")
-        time.sleep(1.5)  # the screen before (maybe this same profile) is still there for a moment
-        last = ["other"]
-
-        def loaded(xml):
-            last[0] = profile_state(xml, name)
-            return last[0] == want if want else last[0] != "other"
-        self.wait_for(loaded, timeout=10)
-        return last[0]
-
     def refused(self, xml):
         return any(re.match(REFUSED, n["text"]) for n in nodes(xml) if n["pkg"] == PKG)
 
-    # the ⋯ menu's items, the bottom sheets (block confirmation, "You blocked") and the unblock
-    # dialog; the profile stays
-    # in the UI tree behind them, so it can't tell whether one is open
+    # the confirmation sheet and the unblock dialog: the screen behind stays in the UI tree, so
+    # only their IDs tell whether one is open
     SHEET = re.compile(r'resource-id="' + re.escape(fa.RID) + r'(?:context_menu_item|layout_container_bottom_sheet|background_dimmer|igds_alert_dialog_\w+)"')
 
-    def close_sheets(self, name):
-        """Back while a menu or sheet is showing (at most twice: never leave the profile)."""
-        for _ in range(2):
-            if not self.SHEET.search(self.d.dump_hierarchy()):
-                return
-            self.d.press("back")
-            time.sleep(1)
-
-    # ---- one profile ---------------------------------------------------------------------------
-    def confirmation(self, name, button):
-        """check for wait_for: the "Block <name>?" / "Unblock <name>?" confirmation is showing --
-        it names the profile (proof it's the right account) and has the button `button`."""
-        def check(xml):
-            ns = nodes(xml)
-            named = any(name.lower() in (n["text"] + n["desc"]).lower() and n["text"].lower() != name.lower()
-                        for n in ns)
-            return named and any(re.fullmatch(exact(button), n["text"]) for n in ns)
-        return check
-
-    def unblock(self, name):
-        """Unblock one profile; returns the outcome (a key of self.stats)."""
-        self.wake()
-        state = self.open_profile(name)
-        if state == "not found":
-            return "not found"
-        if state == "profile":
-            return "not blocked"
-        if state != "blocked":
-            log("  profile did not open (or its name isn't on screen)")
-            return "failed"
-        self.tap(textMatches=exact("unblock"))  # the profile's button
-        if not self.wait_for(self.confirmation(name, "unblock"), 5):
-            log(f"  no \"Unblock {name}?\" confirmation")
-            self.close_sheets(name)
-            return "failed"
-        if self.args.dry_run:
-            log("  dry run: confirmation found, cancelled")
-            self.close_sheets(name)
-            return "would unblock"
-        self.tap(textMatches=exact("unblock"))  # the dialog's button, below the profile's
-        return {True: "unblocked", False: "failed", None: "refused"}[self.confirmed(name, "profile")]
-
-    def inner_list(self):
-        """The innermost scrollable element (the settings or blocked accounts list): the screen
-        also counts the app's page container as scrollable, and scrolling that does nothing."""
-        best = None
-        for el in self.d(scrollable=True, packageName=PKG):
-            try:
-                top = el.info["bounds"]["top"]
-            except fa.UiObjectNotFoundError:
-                continue
-            if best is None or top > best[0]:
-                best = (top, el)
-        return best[1] if best else None
+    def swipe_until(self, found, max_swipes=15):
+        """Swipe the list up until found(xml) is true or the screen stops changing; True if found.
+        Plain swipes: uiautomator2's scroll.to addresses the list as "the n-th scrollable", and
+        that count changes while Instagram's settings list scrolls (UiObjectNotFoundError)."""
+        w, h = self.d.window_size()
+        last = None
+        for _ in range(max_swipes + 1):
+            self.key()
+            xml = self.d.dump_hierarchy()
+            if found(xml):
+                return True
+            if xml == last:                  # the end of the list
+                return False
+            last = xml
+            self.d.swipe(w // 2, int(h * 0.75), w // 2, int(h * 0.35), 0.3)
+            time.sleep(0.8)
+        return False
 
     def goto_blocked_list(self):
         """To the blocked accounts list -- your profile tab -> menu (top right) -> Blocked
@@ -392,8 +323,9 @@ class Blocker:
                 self.wait_for(on_blocked_list, 8)
                 continue
             elif any(re.fullmatch(exact("settings_title"), n["text"]) for n in ns):
-                listing = self.inner_list()          # Settings and activity: scroll to Blocked
-                if not (listing and listing.scroll.to(textMatches=exact("blocked_row"))):
+                # Settings and activity: Blocked is far down
+                if not self.swipe_until(lambda x: any(re.fullmatch(exact("blocked_row"), n["text"])
+                                                      for n in nodes(x))):
                     self.d.press("back")
             elif any(n["rid"] == fa.RID + "profile_tab" for n in ns):
                 self.d(resourceId=fa.RID + "profile_tab").click()
@@ -430,15 +362,69 @@ class Blocker:
         return last or []
 
     def in_blocked_list(self, name):
-        """Is `name` on the blocked accounts list (scrolled through, then back to the top)?"""
-        if any(r[0].lower() == name.lower() for r in list_rows(self.d.dump_hierarchy())):
-            return True
-        listing = self.inner_list()
-        if listing is None:
-            return False
-        found = listing.scroll.to(resourceId=ROW_NAME, textMatches="(?i)^" + re.escape(name) + "$")
-        listing.fling.toBeginning()
-        return bool(found)
+        """Is `name` on the blocked accounts list? Scrolled through; then the list is opened
+        again from Settings, so it starts at the top (where a new block shows up)."""
+        found = self.swipe_until(lambda x: any(r[0].lower() == name.lower() for r in list_rows(x)),
+                                 max_swipes=60)
+        self.reopen_list()
+        return found
+
+    def unblock(self, name):
+        """Unblock one profile through the blocked accounts list (its row's Unblock button);
+        returns the outcome (a key of self.stats). Instagram can show a profile you blocked as
+        "User not found", so its own page is no way to it (DEVELOPMENT.md 4.14)."""
+        self.wake()
+        if not self.goto_blocked_list():
+            log("  couldn't open the blocked accounts list")
+            return "failed"
+        listed = lambda x: [r for r in list_rows(x) if r[0].lower() == name.lower()]
+        if not self.swipe_until(lambda x: listed(x), max_swipes=60):
+            self.reopen_list()
+            return "not blocked"
+        row = listed(self.d.dump_hierarchy())
+        if not row or not re.fullmatch(exact("unblock"), row[0][1]):
+            self.reopen_list()
+            return "failed"
+        x0, y0, x1, y1 = row[0][2]
+        self.d.click((x0 + x1) // 2, (y0 + y1) // 2)
+        if not self.wait_for(lambda x: unblock_question(x, name), 5):
+            log(f"  no \"Unblock {name}?\" question")
+            self.reopen_list()
+            return "failed"
+        if self.args.dry_run:
+            log("  dry run: confirmation found, cancelled")
+            self.reopen_list()
+            return "would unblock"
+        self.d(resourceId=fa.RID + "igds_alert_dialog_primary_button").click()
+
+        # the row goes away (or its button turns to Block)
+        def done(xml):
+            if self.refused(xml):
+                return "refused"
+            if not on_blocked_list(xml):
+                return None
+            row = listed(xml)
+            return "unblocked" if not row or re.fullmatch(exact("block"), row[0][1]) else None
+        outcome = self.wait_for(done, 10) or "failed"
+        self.reopen_list()
+        return outcome
+
+    def reopen_list(self):
+        """Out of a dialog or the search, and the blocked accounts list opened again from
+        Settings: it then starts at the top, where the next block shows up."""
+        self.close_dialogs()
+        if on_blocked_list(self.d.dump_hierarchy()):
+            self.d.press("back")
+            time.sleep(1)
+        self.goto_blocked_list()
+
+    def close_dialogs(self):
+        """Back while a sheet or dialog is showing (at most twice)."""
+        for _ in range(2):
+            if not self.SHEET.search(self.d.dump_hierarchy()):
+                return
+            self.d.press("back")
+            time.sleep(1)
 
     def block(self, name):
         """Block one profile through the blocked accounts list; returns the outcome (a key of
@@ -498,18 +484,6 @@ class Blocker:
             return outcome
         self.goto_blocked_list()
         return "blocked" if self.in_blocked_list(name) else "failed"
-
-    def confirmed(self, name, want):
-        """After the confirmation's button: True once the profile shows `want` ("blocked" /
-        "profile"), False if it doesn't, None if Instagram refused. The open profile changes in
-        place, which is the proof; a freshly reopened one can show Instagram's cached state from
-        before for a while (DEVELOPMENT.md 4.14), so reopening is only the fallback."""
-        seen = self.wait_for(lambda x: "refused" if self.refused(x) else
-                             profile_state(x, name) == want and "seen", timeout=10)
-        self.close_sheets(name)
-        if seen == "refused":
-            return None
-        return bool(seen) or self.open_profile(name, want=want) == want
 
     def record(self, name, outcome):
         try:
@@ -643,7 +617,7 @@ def main():
                    help="seconds between profiles, ±30%% at random (default 20; Instagram limits "
                         "how fast accounts may act)")
     p.add_argument("--recheck", action="store_true",
-                   help=f"also open profiles {DONE_LOG} already lists as blocked (with --unblock: unblocked)")
+                   help=f"also handle profiles {DONE_LOG} already lists as blocked (with --unblock: unblocked)")
     p.add_argument("-s", "--serial", help="adb device serial (default: the only connected device)")
     args = p.parse_args()
     if args.profiles is None:
@@ -679,7 +653,7 @@ def main():
         + (f" · {skipped} {verb}ed in earlier runs, skipped" if skipped else ""))
     log(f"   mode       {verb} · " + ("DRY RUN: nothing changes" if args.dry_run else f"{args.delay:g} s between profiles"))
     log(f"   results    {DONE_LOG}")
-    log(f"   keys       " + ("press h for help" if sys.stdin.isatty() else
+    log("   keys       " + ("press h for help" if sys.stdin.isatty() else
                             f"off (no terminal) -- stop: create {STOP_FILE} · pause: create / delete {PAUSE_FILE}"))
     log_block_end()
     signal.signal(signal.SIGTERM, signal.default_int_handler)

@@ -7,8 +7,8 @@ On Windows this makes the release zip (GitHub Actions runs it on every v* tag); 
 builds the same bundle for Linux, to test the bundling without a Windows PC. Steps: PyInstaller
 (packaging/feed_autoplay.spec), add the files users need next to the exe, collect the
 third-party license notices, self-check the app, check the contents, zip + SHA-256.
-Output: build/android-instagram-tools-<windows|linux>-<version>.zip (the folder inside is still
-feed_autoplay/, so unzipping an update over the old folder keeps the user's files)
+Output: build/android-instagram-tools-<windows|linux>-<version>.zip, everything in one folder
+android-instagram-tools/ (feed_autoplay/ up to 0.5.0)
 """
 import hashlib
 import importlib.metadata as md
@@ -96,7 +96,7 @@ def collect_licenses(dest):
 
 def main():
     ver = version()
-    app = BUILD / "dist" / "feed_autoplay"
+    app = BUILD / "dist" / "android-instagram-tools"
     shutil.rmtree(BUILD / "dist", ignore_errors=True)
     subprocess.run([sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean",
                     "--distpath", str(BUILD / "dist"), "--workpath", str(BUILD / "work"),
