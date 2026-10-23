@@ -6,7 +6,8 @@ like a person would — no Instagram API, no browser.
 
 | Tool | What it does | Status |
 |---|---|---|
-| **[feed_autoplay](#feed_autoplay-reference)** | plays the videos of your home timeline one after another, optionally at 2x, liking / reposting / copying links / saving them | the only tool so far |
+| **[feed_autoplay](#feed_autoplay-reference)** | plays the videos of your home timeline one after another, optionally at 2x, liking / reposting / copying links / saving them | in use |
+| **[profile_blocker](#profile_blocker-reference)** | blocks (or, with `--unblock`, unblocks) every profile in a list; Instagram in English or Brazilian Portuguese | new in 0.4.0 |
 
 > ⚠ Instagram's terms don't allow automated use. Acting at volume can get the account limited
 > (Instagram already refused reposts after ~100 in under 2 hours). Use the tools at your own
@@ -258,8 +259,12 @@ with Notepad to change them (put a `#` in front of an option to turn it off). An
 change an existing `settings.txt`. Keys work in its window (**h** help · **s**
 stats · **q** quit); it stays open at the end so you can read the statistics.
 
+**Blocking profiles:** double-click **`profile_blocker.exe`** — the first time it creates
+**`profiles.txt`** next to it; put the profiles to block in it with Notepad (one per line) and
+start it again. **`unblock.bat`** unblocks them. See [profile_blocker](#profile_blocker-reference).
+
 **Update:** run `disconnect.bat`, then unzip the new version over the old folder —
-`settings.txt` and `runs` are kept. More (troubleshooting, options): `README.txt` in the folder.
+`settings.txt`, `profiles.txt` and `runs` are kept. More (troubleshooting, options): `README.txt` in the folder.
 
 ---
 
@@ -360,10 +365,47 @@ debugging.
 
 ---
 
+## profile_blocker reference
+
+Blocks every profile in a text file, one after another: it opens each profile, taps **⋯ → Block**
+and confirms with the plain **Block** (never "Block and Report"), then reopens the profile to
+check it shows **Unblock**. `--unblock` undoes it: the profile's **Unblock** button, confirmed.
+
+```
+uv run profile_blocker.py profiles.txt --dry-run   # try first: stops at the confirmation, nothing changes
+uv run profile_blocker.py profiles.txt             # block them
+uv run profile_blocker.py profiles.txt --unblock   # undo: unblock them
+```
+
+Windows app (D): `profile_blocker.exe` uses `profiles.txt` next to it (created on its first
+start), `unblock.bat` unblocks them; in a terminal the same options work
+(`profile_blocker.exe --dry-run`). Keep your own list in `runs/` when running with uv
+(e.g. `runs/profiles.txt`): that folder is git-ignored.
+
+`profiles.txt`: one profile per line, as `name`, `@name` or a link
+(`https://www.instagram.com/name/`); empty lines and text after `#` are ignored.
+
+| Option | Default | What it does |
+|---|---|---|
+| `--unblock` | (off) | unblock the listed profiles instead of blocking them |
+| `--dry-run` | (off) | go as far as the "Block / Unblock *name*?" confirmation, then cancel |
+| `--delay S` | **20** | seconds between profiles (±30 % at random) |
+| `--recheck` | (off) | also open profiles an earlier run already blocked (with `--unblock`: unblocked) |
+| `-s SERIAL` | | the phone, when several are connected |
+
+Every result goes to `runs/blocked-profiles.txt` (time, name, outcome). A later run skips the
+profiles whose latest result there is *blocked* / *already blocked* (with `--unblock`:
+*unblocked* / *not blocked*), so a stopped run just continues. Keys: **p** pause, **s**
+statistics, **h** help, **q** quit; `runs/STOP` and `runs/PAUSE` work as for feed_autoplay.
+Profiles that don't exist are reported as *not found*. If Instagram refuses a block (rate limit),
+the run pauses 30 min (doubling on repeats) and tries that profile again.
+
+---
+
 ## Privacy
 
-The `runs/` folder (run logs with the accounts that were played, your copied links,
-diagnostics) and `.env` (your phone's address) are personal — `.gitignore` keeps them out of the
+The `runs/` folder (run logs with the accounts that were played, your copied links, the
+profiles you blocked, diagnostics) and `.env` (your phone's address) are personal — `.gitignore` keeps them out of the
 repository. So is the **tuning data** (`tools/traces*/`, `tools/icon_samples/`): screenshots of
 a real feed, used only to tune the tools and kept off the repository — record your own with
 `tools/record_traces.py` if you need them (DEVELOPMENT.md 5).

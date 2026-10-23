@@ -1,7 +1,7 @@
 # android-instagram-tools — development notes
 
 This document records how the project's tools work, why each decision was made, and what was
-tried and failed along the way. There is one tool so far, **feed_autoplay** (`feed_autoplay.py`).
+tried and failed along the way. Tools: **feed_autoplay** (`feed_autoplay.py`) and **profile_blocker** (`profile_blocker.py`, 4.14).
 (For what the tools do and how to install and run them, start with `README.md`; containers:
 `CONTAINER.md`.) Read it before changing behaviour: most of the "obvious" alternatives were
 already tried on the real phone and are listed here with the reason they were dropped.
@@ -31,6 +31,7 @@ Contents
    - 4.11 [Statistics and pace estimate](#411-statistics-and-pace-estimate)
    - 4.12 [Languages](#412-languages) — English and Brazilian Portuguese
    - 4.13 [Screen brightness](#413-screen-brightness) — keys < >, `--brightness`
+   - 4.14 [profile_blocker](#414-profile_blocker) — the second tool: block / unblock a list of profiles
 5. [How things were tested (and how to re-test)](#5-how-things-were-tested-and-how-to-re-test)
 6. [Known limitations and ideas](#6-known-limitations-and-ideas)
 7. [Pitfalls checklist](#7-pitfalls-checklist)
@@ -152,7 +153,8 @@ file).
 
 **Windows app (one-folder zip, `packaging/`, README D):** for users who shouldn't need uv, git
 or a terminal. PyInstaller builds `feed_autoplay.exe` plus an `_internal\` folder with Python,
-the packages, adb and the icon masks; the zip adds `connect.bat`, `disconnect.bat`, `README.txt` and
+the packages, adb and the icon masks — since 0.4.0 also `profile_blocker.exe` (4.14), sharing
+`_internal\`; the zip adds `connect.bat`, `disconnect.bat`, `unblock.bat`, `README.txt` and
 `LICENSES\`. *One folder, not one file*: a one-file exe unpacks
 itself into a new temp folder on every start, and adb's background server keeps running from
 there (folder locked, leftovers, a different adb path each run); one folder also starts at once
@@ -181,7 +183,7 @@ and gets fewer antivirus false alarms.
   installs its helper on the phone from them), adbutils' `binaries`, the default settings), the
   extra files, third-party license notices (every shipped package + Python + PyInstaller's
   bootloader + adb's Apache-2.0), a self-check of the built app (`check`, `--help`,
-  `adb version`), a scan that fails on private paths (`runs`, `.env`, traces…), then
+  `adb version`, `profile_blocker --help`), a scan that fails on private paths (`runs`, `.env`, traces…), then
   `build/feed_autoplay-<windows|linux>-<version>.zip` + `.sha256`. PyInstaller only builds for
   the system it runs on: the Windows zip comes from Windows; on Linux the same script builds the
   same bundle for Linux, to test it. PyInstaller is pinned in the `build` dependency group
@@ -207,7 +209,8 @@ and gets fewer antivirus false alarms.
 - **Releases:** v0.2.0 (first Windows app), v0.2.1 (new default `settings.txt`; `.sha256` with LF
   line endings so `sha256sum -c` works on Linux/macOS), v0.2.2 (`disconnect.bat` / `disconnect`;
   `connect.bat` renamed from "Connect phone.bat"; `pause.bat` / `stop.bat` removed), v0.2.3 (default
-  `settings.txt`: repost all instead of followed). The release pages of v0.2.0–v0.2.2 were deleted
+  `settings.txt`: repost all instead of followed), v0.3.0 (brightness keys, 4.13), v0.4.0
+  (`profile_blocker.exe` + `unblock.bat`, 4.14). The release pages of v0.2.0–v0.2.2 were deleted
   on 2026-10-22 (superseded; nobody depended on them); their **tags are kept** as the record of
   each version. To rebuild an old zip: Actions → windows-release → Run workflow → pick the
   tag; the zip comes as the run's artifact (a manual run doesn't publish a release).
@@ -277,7 +280,7 @@ android-instagram-tools/
 ├── tools/                        dev tools, per tool
 ├── packaging/                    the Windows app: spec, build.py, files for the zip (1)
 ├── .github/workflows/            windows-release.yml: builds and publishes the zip on v* tags
-├── tests/                        checks without a phone (test_ui_text.py 4.12, test_pause_stats.py 4.10, 4.11, test_brightness.py 4.13)
+├── tests/                        checks without a phone (test_ui_text.py 4.12, test_pause_stats.py 4.10, 4.11, test_brightness.py 4.13, test_profile_blocker.py 4.14)
 └── Dockerfile, compose.yaml, README.md, DEVELOPMENT.md, CONTAINER.md
 ```
 
@@ -1159,6 +1162,77 @@ battery and heat on long runs watched through scrcpy. Both keys need Shift on co
   handled within ~1 s (1 % → minimum ×2 → 5 % → 10 %, phone level 3 → 26), 2x locked on every
   video, pause/resume and q restored as before. Not tried yet: the keys in the Windows app's
   window.
+
+### 4.14 profile_blocker
+
+The second tool: blocks the profiles of a list (`--unblock`: unblocks them). It **imports
+feed_autoplay** for the shared pieces (`Keys`, `log`, `pick_serial`, the stop/pause files,
+`REFUSED`, `PKG`/`RID`) instead of copying them; the shared package of 3 is still to come, now
+that there are two users of it. **Windows app** (since 0.4.0): `profile_blocker.exe` next to
+`feed_autoplay.exe` in the same zip, sharing `_internal` (one PyInstaller `COLLECT` of two
+`Analysis`/`EXE`; the zip grew ~7 MB); started without a list it uses `profiles.txt` next to
+the exe, created on first start from `packaging/windows/profiles.txt` (an example, all lines
+commented out) and then stops — not in the zip, so updates keep the user's list, like
+`settings.txt`; `unblock.bat` = `profile_blocker.exe --unblock`; its own window waits for Enter
+at the end (`entry()`, `fa.owns_console`); stdout reconfigured to UTF-8 (the ⛔ ✓ symbols would
+crash an old Windows console otherwise). Tested on the Linux build of the bundle (first start,
+dry run on the phone with the bundled adb, runs/ next to the app); not yet on Windows. No
+container entry point.
+
+**Flow, as recorded** (Samsung SM-A536E, Android 16, 1080×2400, Instagram **452.1.0.54.64**,
+English, 2026-10-23; tested on the account `nytimes`):
+
+| Step | Screen |
+|---|---|
+| open | `am start -a VIEW -p com.instagram.android -d https://www.instagram.com/<name>/` — the app opens the profile itself (`UrlHandlerActivity`), no tapping through search |
+| right profile? | `action_bar_title` text = the username; "not found" = `no_found_text` "User not found" |
+| state | `profile_header_follow_button`: "Follow" / "Following" / … or **"Unblock"** when blocked (plus "You've blocked this account") |
+| ⋯ | content-desc "Options" (top right) → `context_menu_item`s: About this account, Copy profile URL, Share this profile, QR code, Restrict, **Block**, Report |
+| Block confirmation | bottom sheet `layout_container_bottom_sheet`, headline "Block <name>?", buttons `bb_primary_action_container` "Block" and `bb_secondary_action` **"Block and Report"** (never tapped: exact text match) — no "You blocked" sheet followed |
+| Unblock | the profile's "Unblock" button → alert dialog `igds_alert_dialog_headline` "Unblock <name>?", `igds_alert_dialog_primary_button` "Unblock" / `…_cancel_button` "Cancel" |
+
+**Safety.** It only acts on the profile whose username is on screen as its own text (never on
+whatever profile happens to be open), only confirms when the confirmation names that profile,
+taps exact texts only ("Block" never matches "Unblock" or "Block and Report"), and checks the
+result on a freshly opened profile. Blocking is idempotent: an already blocked profile has no
+"Block" item, so a repeated run reports "already blocked".
+
+**Findings / bugs fixed while testing:**
+- The profile stays in the UI tree behind the menu and the bottom sheet, so "is the profile
+  showing?" can't tell whether a sheet is open: `close_sheets` looks for the menu / sheet /
+  dialog IDs instead (`SHEET`).
+- Right after a block or unblock, a **reopened** profile can show Instagram's cached state from
+  before: first for a moment (an unblock reported "failed" although it had worked), then — on a
+  run while the phone was also recording its screen, everything ~4× slower — for over 18 s
+  (adidas and nike reported "failed" although they were blocked; the recording showed
+  Desbloquear right after the tap, then "Seguir" again on the reopened page). The proof is now
+  the open profile itself, which changes in place to Unblock / Follow (`confirmed`); reopening
+  (waiting up to 10 s for the expected state, `open_profile(want=…)`) is only the fallback. The
+  "You blocked <name>" sheet the first version expected (and tapped "Dismiss" on) never appeared.
+- When the same profile was already on screen, it counted as loaded at once and the ⋯ tap got
+  lost while the reopened page replaced it ("no Block item"): 1.5 s settle after opening, and a
+  second ⋯ tap if the menu doesn't show.
+
+Tested live: dry run (block and unblock), block, `--recheck` → already blocked, a made-up
+username → not found, unblock, skipping by the results file; then 4 block/unblock cycles in a row
+without a failure (`nytimes` was left unblocked). Offline checks:
+`uv run tests/test_profile_blocker.py`.
+
+**Brazilian Portuguese** (recorded the same day, same phone, Instagram switched to pt-BR): the
+screens are identical, resource IDs included; only the texts differ, and every one the tool
+needs was already in `UI_TEXT` — no code change was needed.
+
+| | English | pt-BR |
+|---|---|---|
+| ⋯ button | Options | Opções |
+| menu item / confirmation button | Block | Bloquear |
+| confirmation | Block nytimes? · Block and Report | Bloquear nytimes? · Bloquear e denunciar |
+| blocked profile | Unblock · You've blocked this account | Desbloquear · Você bloqueou esta conta |
+| unblock dialog | Unblock nytimes? · Unblock / Cancel | Desbloquear nytimes? · Desbloquear / Cancelar |
+| not found | User not found | Usuário não encontrado |
+
+Tested live in pt-BR: dry runs (block and unblock), unblock, block, already blocked, not found,
+unblock again — all as in English.
 
 ## 5. How things were tested (and how to re-test)
 
