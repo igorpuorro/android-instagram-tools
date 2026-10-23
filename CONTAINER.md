@@ -16,9 +16,11 @@ debugging** — a container can't use the phone's USB connection on Windows.
 > **Not tried yet:** Windows itself, Podman, the one-time `pair`, and likes / reposts / copied
 > links / saves from inside the container (same code as outside, which is tested).
 
-**Which tool runs:** the compose service `app` runs **feed_autoplay** — currently the only tool;
-its options go after `app` (`docker compose run --rm app --play all --2x`). The image is called
-`feed-autoplay` (section 6).
+**Which tool runs:** the compose service `app` runs **feed_autoplay**; its options go after `app`
+(`docker compose run --rm app --play all --2x`). **profile_blocker** runs with `block` and the
+list, kept in the mounted `runs` folder: `docker compose run --rm app block runs/profiles.txt`
+(add `--dry-run` to try, `--unblock` to undo; README "profile_blocker reference"). The image is
+called `feed-autoplay` (section 6).
 
 ## 1. Configure and pair (once)
 
@@ -63,6 +65,8 @@ docker compose logs --no-log-prefix app > runs\run-<date>.log    # keep the outp
 - `docker compose run --rm app tool period.py runs/maxwatch-<time>.npz` — analyse a video that
   hit the time limit (the app prints this command).
 - `docker compose run --rm app --help` — all feed_autoplay options (works without the phone).
+- `docker compose run --rm app block runs/profiles.txt` — block the profiles listed in
+  `runs\profiles.txt` (results in `runs\blocked-profiles.txt`); `block --help` for its options.
 
 ## 3. When the phone's port changes
 

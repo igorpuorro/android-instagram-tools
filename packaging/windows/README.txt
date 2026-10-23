@@ -1,5 +1,5 @@
-feed_autoplay for Windows
-=========================
+android-instagram-tools for Windows: feed_autoplay + profile_blocker
+===================================================================
 
 Two tools for Instagram on your Android phone, nothing to install:
 - feed_autoplay.exe plays the videos of your home timeline one after another, optionally at
@@ -79,15 +79,17 @@ Blocking profiles (profile_blocker.exe)
 1. Double-click profile_blocker.exe once: it creates profiles.txt next to it and stops.
 2. Open profiles.txt with Notepad and put the profiles to block in it, one per line: the
    name, @name or the profile's link (https://www.instagram.com/name/). "#" starts a comment.
-3. Double-click profile_blocker.exe again: it opens each profile, taps ... > Block and confirms
-   with the plain Block (never "Block and Report"), and checks the profile then shows Unblock.
+3. Double-click profile_blocker.exe again: it goes to your profile > menu > Blocked
+   ("Bloqueados"), and for each profile taps +, searches the name, taps Block next to exactly
+   that name, confirms, and checks the profile is then on your blocked list.
    It waits 20 seconds between profiles (Instagram limits how fast accounts may act).
 To undo it: double-click unblock.bat (unblocks the profiles in profiles.txt).
 Keys in its window: p pause / resume, s statistics, h help, q quit.
 Results: runs\blocked-profiles.txt. A later run skips the profiles already blocked, so a
 stopped run just carries on. To try without blocking anything, in a terminal in this folder:
 profile_blocker.exe --dry-run (goes as far as the "Block <name>?" question, then cancels).
-Instagram in English or Brazilian Portuguese. All options: profile_blocker.exe --help
+Tested with Instagram in Brazilian Portuguese (English not fully checked yet).
+All options: profile_blocker.exe --help
 
 
 Phone-specific settings

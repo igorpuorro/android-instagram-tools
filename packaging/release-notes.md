@@ -2,11 +2,11 @@
 nothing to install (no Python, no uv, no git):
 - **`feed_autoplay.exe`** plays the videos of your home timeline one after another, optionally
   at 2x, liking / reposting / copying links / saving them;
-- **`profile_blocker.exe`** *(new in 0.4.0)* blocks every profile in a list (`profiles.txt`,
-  created on its first start); **`unblock.bat`** unblocks them again. English or Brazilian
-  Portuguese Instagram.
+- **`profile_blocker.exe`** *(0.5.0: about twice as fast)* blocks every profile in a list (`profiles.txt`,
+  created on its first start), through your blocked accounts list (Bloqueados → +);
+  **`unblock.bat`** unblocks them again. Tested with Instagram in Brazilian Portuguese.
 
-1. Download `feed_autoplay-windows-<version>.zip` below and unzip it (e.g. to your Desktop).
+1. Download `android-instagram-tools-windows-<version>.zip` below and unzip it (e.g. to your Desktop).
 2. Prepare the phone: Developer options, USB or Wireless debugging — see `README.txt` in the folder.
 3. Wi-Fi: double-click **`connect.bat`**. USB: plug the phone in (with the phone maker's USB driver).
    When you're done, **`disconnect.bat`** ends the connections and stops adb.
@@ -16,7 +16,7 @@ nothing to install (no Python, no uv, no git):
 
 Windows may say **"Windows protected your PC"** the first time: click **More info → Run
 anyway** (the app isn't signed with a paid certificate). Check the download with the
-`.sha256` file: `Get-FileHash feed_autoplay-windows-<version>.zip` in PowerShell must show the
+`.sha256` file: `Get-FileHash android-instagram-tools-windows-<version>.zip` in PowerShell must show the
 same value.
 
 **Updating:** run `disconnect.bat`, then unzip the new version over the old folder —

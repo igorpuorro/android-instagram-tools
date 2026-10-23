@@ -1,4 +1,4 @@
-# feed_autoplay in a container (Docker or Podman) -- see CONTAINER.md.
+# feed_autoplay and profile_blocker in a container (Docker or Podman) -- see CONTAINER.md.
 # The phone is reached over Wi-Fi debugging (adb connect ip:port); no USB passthrough.
 FROM python:3.12-slim
 
@@ -22,7 +22,7 @@ RUN pip install uiautomator2==3.7.0 adbutils==2.12.0 numpy==2.2.6 pillow==12.3.0
 RUN ln -s "$(python -c 'import adbutils; print(adbutils.adb_path())')" /usr/local/bin/adb
 
 WORKDIR /app
-COPY feed_autoplay.py ./
+COPY feed_autoplay.py profile_blocker.py ./
 COPY assets/ ./assets/
 COPY tools/*.py ./tools/
 COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh

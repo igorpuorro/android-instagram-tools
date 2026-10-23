@@ -1,10 +1,11 @@
 #!/bin/sh
-# feed_autoplay container entrypoint -- see CONTAINER.md.
+# Container entrypoint (feed_autoplay, profile_blocker) -- see CONTAINER.md.
 #
 #   pair <ip:port> <code>   one-time pairing with the phone (Wireless debugging ->
 #                           "Pair device with pairing code"); the key is kept in /root/.android
 #   adb <args...>           run the bundled adb (e.g. "adb devices")
 #   tool <script> <args>    run a tools/ script (e.g. "tool period.py runs/maxwatch-....npz")
+#   block <list> <options>  connect to $PHONE, then run profile_blocker.py (e.g. "block runs/profiles.txt")
 #   <app options...>        connect to $PHONE, then run feed_autoplay.py with these options
 set -e
 
@@ -28,8 +29,14 @@ case "$1" in
     ;;
 esac
 
+app=feed_autoplay.py
+if [ "$1" = block ]; then
+  shift
+  app=profile_blocker.py
+fi
+
 case " $* " in
-  *" -h "*|*" --help "*) exec python -u /app/feed_autoplay.py "$@" ;;   # help needs no phone
+  *" -h "*|*" --help "*) exec python -u "/app/$app" "$@" ;;   # help needs no phone
 esac
 
 if [ -n "$PHONE" ]; then
@@ -53,4 +60,4 @@ else
   echo "PHONE is not set (e.g. PHONE=192.168.1.23:41235 in .env); using whatever adb already sees" >&2
 fi
 
-exec python -u /app/feed_autoplay.py "$@"
+exec python -u "/app/$app" "$@"

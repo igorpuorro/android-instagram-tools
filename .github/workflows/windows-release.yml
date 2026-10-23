@@ -29,10 +29,10 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: feed_autoplay-windows
+          name: android-instagram-tools-windows
           path: |
-            build/feed_autoplay-windows-*.zip
-            build/feed_autoplay-windows-*.zip.sha256
+            build/android-instagram-tools-windows-*.zip
+            build/android-instagram-tools-windows-*.zip.sha256
 
       - name: Publish the release
         if: github.ref_type == 'tag'
@@ -40,7 +40,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $files = Get-ChildItem build/feed_autoplay-windows-*.zip, build/feed_autoplay-windows-*.zip.sha256
+          $files = Get-ChildItem build/android-instagram-tools-windows-*.zip, build/android-instagram-tools-windows-*.zip.sha256
           gh release create "$env:GITHUB_REF_NAME" $files.FullName `
-            --title "feed_autoplay $env:GITHUB_REF_NAME for Windows" `
+            --title "android-instagram-tools $env:GITHUB_REF_NAME for Windows: feed_autoplay + profile_blocker" `
             --notes-file packaging/release-notes.md

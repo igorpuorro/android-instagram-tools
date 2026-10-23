@@ -184,14 +184,17 @@ and gets fewer antivirus false alarms.
   extra files, third-party license notices (every shipped package + Python + PyInstaller's
   bootloader + adb's Apache-2.0), a self-check of the built app (`check`, `--help`,
   `adb version`, `profile_blocker --help`), a scan that fails on private paths (`runs`, `.env`, traces…), then
-  `build/feed_autoplay-<windows|linux>-<version>.zip` + `.sha256`. PyInstaller only builds for
+  `build/android-instagram-tools-<windows|linux>-<version>.zip` + `.sha256` (named
+  `feed_autoplay-…` up to 0.4.0; the folder inside is still `feed_autoplay\`, so an update
+  unzipped over it keeps `settings.txt`, `profiles.txt` and `runs`). PyInstaller only builds for
   the system it runs on: the Windows zip comes from Windows; on Linux the same script builds the
   same bundle for Linux, to test it. PyInstaller is pinned in the `build` dependency group
   (`uv run` without `--group build` doesn't install it).
 - **Release:** `.github/workflows/windows-release.yml` on a `windows-latest` runner, `uv run
   --frozen --python 3.13 --group build packaging/build.py`; a `v*` tag publishes a GitHub Release
-  (zip, `.sha256`, notes from `packaging/release-notes.md`), a manual run only uploads the zip as
-  a run artifact. To release: set the same version in `pyproject.toml` and `__version__`
+  (zip, `.sha256`, notes from `packaging/release-notes.md`; title "android-instagram-tools v… for
+  Windows: feed_autoplay + profile_blocker" since 0.5.0, "feed_autoplay v… for Windows" before),
+  a manual run only uploads the zip as a run artifact. To release: set the same version in `pyproject.toml` and `__version__`
   (`build.py` refuses a mismatch, and a tag that isn't `v<version>`), commit, `git tag
   v<version>`, push the commit and the tag.
   Docs and shared links point to `…/releases/latest` (GitHub redirects it to the newest
@@ -210,7 +213,8 @@ and gets fewer antivirus false alarms.
   line endings so `sha256sum -c` works on Linux/macOS), v0.2.2 (`disconnect.bat` / `disconnect`;
   `connect.bat` renamed from "Connect phone.bat"; `pause.bat` / `stop.bat` removed), v0.2.3 (default
   `settings.txt`: repost all instead of followed), v0.3.0 (brightness keys, 4.13), v0.4.0
-  (`profile_blocker.exe` + `unblock.bat`, 4.14). The release pages of v0.2.0–v0.2.2 were deleted
+  (`profile_blocker.exe` + `unblock.bat`, 4.14), v0.5.0 (profile_blocker blocks through the
+  blocked accounts list, ~2× faster; 4.14). The release pages of v0.2.0–v0.2.2 were deleted
   on 2026-10-22 (superseded; nobody depended on them); their **tags are kept** as the record of
   each version. To rebuild an old zip: Actions → windows-release → Run workflow → pick the
   tag; the zip comes as the run's artifact (a manual run doesn't publish a release).
@@ -218,7 +222,7 @@ and gets fewer antivirus false alarms.
 **In a container (Docker or Podman — no Python on the host):** see `CONTAINER.md`.
 Image `feed-autoplay` (named in `compose.yaml`; the code is copied in, so rebuild after code
 changes). Files: `Dockerfile` (python:3.12-slim + the tested package versions, adbutils' adb linked as
-`adb`, `FEED_AUTOPLAY_CONTAINER=1`), `docker/entrypoint.sh` (`pair`, `adb …`, `tool <script>`,
+`adb`, `FEED_AUTOPLAY_CONTAINER=1`), `docker/entrypoint.sh` (`pair`, `adb …`, `tool <script>`, `block …` (profile_blocker, 4.14),
 otherwise `adb connect $PHONE` with retries, then the app), `compose.yaml` (`./runs` mounted,
 named volume `adb-keys` for the pairing key, default `command:` for `up -d`), `.env.example`
 (`PHONE`, `TZ`), `.dockerignore`. The app runs unchanged (Linux inside the container). Findings:
@@ -1176,70 +1180,117 @@ commented out) and then stops — not in the zip, so updates keep the user's lis
 `settings.txt`; `unblock.bat` = `profile_blocker.exe --unblock`; its own window waits for Enter
 at the end (`entry()`, `fa.owns_console`); stdout reconfigured to UTF-8 (the ⛔ ✓ symbols would
 crash an old Windows console otherwise). Tested on the Linux build of the bundle (first start,
-dry run on the phone with the bundled adb, runs/ next to the app); not yet on Windows. No
-container entry point.
+dry run on the phone with the bundled adb, runs/ next to the app); not yet on Windows.
+**Container:** `block <list> <options>` in `docker/entrypoint.sh` (connects to `$PHONE` like the
+default command, then runs `profile_blocker.py`; `block --help` needs no phone); tested: image
+build, `block --help`, a run without a phone (clean "no device connected"); not yet with a phone
+from inside the container (this PC has no container pairing).
 
-**Flow, as recorded** (Samsung SM-A536E, Android 16, 1080×2400, Instagram **452.1.0.54.64**,
-English, 2026-10-23; tested on the account `nytimes`):
+**Two routes.** Blocking goes through **your own blocked accounts list** (since 0.5.0, 2026-10-23,
+suggested by the owner as faster); unblocking (`--unblock`) through **the profile page** — the
+route blocking used first. Per profile, measured on the same phone: ~8–12 s on the list (the way
+there is walked once, then each profile starts from the list again) against ~25 s on the profile
+page (open the page, wait for it, ⋯ menu, sheet, check).
+
+**Blocking: the blocked accounts list** (recorded in pt-BR, Samsung SM-A536E, Android 16,
+1080×2400, Instagram **452.1.0.54.64**, 2026-10-23; tested on the account `nytimes`). English
+texts in `UI_TEXT` for this route (`Blocked`, `Blocked accounts`, `Settings and activity`, `Add`)
+are **not recorded yet** — the obvious ones; check them before relying on an English run.
+
+| Step | Screen |
+|---|---|
+| your profile | tab `profile_tab` (bottom right; content-desc "Perfil") |
+| menu | content-desc "Opções" (top right, next to "Ver perfil no Threads") → "Configurações e atividade" |
+| Blocked | settings row text "Bloqueados" (content-desc "Bloqueados, <count>"), far down: scrolled to |
+| blocked list | `action_bar_title` "Contas bloqueadas", + = content-desc "Adicionar" (top right); rows `blocked_list_container` = `blocked_list_username` + `blocked_list_subtitle` + `unblock_button` "Desbloquear" |
+| + (search) | `search_bar_real_field` (focused); before typing, a list of **suggested** accounts, each with a "Bloquear" button |
+| results | the same rows, button "Bloquear"; the subtitle is the full name |
+| confirmation | bottom sheet: `igds_headline_headline` "Bloquear <name>?", `bb_primary_action_container` "Bloquear" (no "Block and Report" on this route) |
+| after | straight back on "Contas bloqueadas", the profile at the top with "Desbloquear" |
+
+Code: `goto_blocked_list` (works from whatever screen shows: list, search, sheet, settings, own
+profile, anything with a tab bar, Back otherwise), `search` (types the name, returns the rows once
+two dumps in a row agree — the results replace the suggestions as the search runs), `list_rows`,
+`on_blocked_list`, `block_question`, `in_blocked_list`, `block`.
+
+**Safety on this route.** The search screen is full of Block buttons for other accounts
+(suggestions, similar names), so:
+- a button is only tapped inside the row whose **username** equals the name exactly — never
+  the full name: searching `nytimes` also returned `nytimes79`, whose full name is "nytimes";
+- the confirmation must ask about exactly that name (`block_question`: headline
+  "Bloquear <name>?" / "Block <name>?"), or nothing is confirmed — this also catches a tap that
+  landed on a moved row;
+- the sheet's button is tapped by its ID (`bb_primary_action_container`): the rows behind the
+  sheet, still in the UI tree, say "Bloquear" too;
+- the proof is the blocked accounts list showing the name with Unblock.
+
+**Findings:**
+- **Blocked accounts don't show up in the search**, and a username that doesn't exist gives no
+  rows at all — so "no exact row" is looked up on the blocked list (`in_blocked_list`, scrolled
+  through) to tell "already blocked" from "not found".
+- The settings and blocked-list screens count **two scrollables**: the app's page container
+  (`RecyclerView`, first) and the list itself (inner). `scroll.to` on the first does nothing —
+  the first version never found "Bloqueados"; `inner_list` takes the innermost.
+- uiautomator2's agent restarted once at the start of a run (`RemoteDisconnected`): the
+  per-profile retry (10 s, reconnect) covered it.
+- **A tap on a result can get lost** right after typing (seen once, keyboard still up: one
+  screen read came back empty, the tap changed nothing, no sheet): the tap is repeated once, but
+  only with no sheet open and on the row where it is now; the name check on the sheet still
+  decides.
+- **"Bloqueando..." (Blocking...)**, a progress box (`message`) after confirming, stayed ~15 s
+  for one account (~4 s for another). Backing out while it shows left the search early and the
+  run reported "failed" although Instagram finished the block in the background. Now the tool
+  waits while it shows (up to a minute) and never presses Back over it (`blocking`).
+
+Tested live (pt-BR): dry run (stops at the confirmation, sheet and search closed), block,
+already blocked (via the list), a made-up username → not found, a block starting from the
+profile page and from the middle of the settings list; `nytimes` was left unblocked. Then the
+demo list (3 brand accounts) blocked in one run, screen recorded: the two findings above came
+from those recordings; with the fixes all 3 blocked first time.
+
+**Unblocking: the profile page** (recorded in English and pt-BR, same phone and version; also
+the block route up to 2026-10-23):
 
 | Step | Screen |
 |---|---|
 | open | `am start -a VIEW -p com.instagram.android -d https://www.instagram.com/<name>/` — the app opens the profile itself (`UrlHandlerActivity`), no tapping through search |
 | right profile? | `action_bar_title` text = the username; "not found" = `no_found_text` "User not found" |
 | state | `profile_header_follow_button`: "Follow" / "Following" / … or **"Unblock"** when blocked (plus "You've blocked this account") |
-| ⋯ | content-desc "Options" (top right) → `context_menu_item`s: About this account, Copy profile URL, Share this profile, QR code, Restrict, **Block**, Report |
-| Block confirmation | bottom sheet `layout_container_bottom_sheet`, headline "Block <name>?", buttons `bb_primary_action_container` "Block" and `bb_secondary_action` **"Block and Report"** (never tapped: exact text match) — no "You blocked" sheet followed |
 | Unblock | the profile's "Unblock" button → alert dialog `igds_alert_dialog_headline` "Unblock <name>?", `igds_alert_dialog_primary_button` "Unblock" / `…_cancel_button` "Cancel" |
+| (old block route) | ⋯ = content-desc "Options" → `context_menu_item`s (… Restrict, **Block**, Report) → bottom sheet "Block <name>?" with "Block" and **"Block and Report"** |
 
-**Safety.** It only acts on the profile whose username is on screen as its own text (never on
-whatever profile happens to be open), only confirms when the confirmation names that profile,
-taps exact texts only ("Block" never matches "Unblock" or "Block and Report"), and checks the
-result on a freshly opened profile. Blocking is idempotent: an already blocked profile has no
-"Block" item, so a repeated run reports "already blocked".
-
-**Findings / bugs fixed while testing:**
-- The profile stays in the UI tree behind the menu and the bottom sheet, so "is the profile
-  showing?" can't tell whether a sheet is open: `close_sheets` looks for the menu / sheet /
-  dialog IDs instead (`SHEET`).
+It only acts on the profile whose username is on screen as its own text (never on whatever
+profile happens to be open) and only confirms when the dialog names that profile. Findings:
+- The profile stays in the UI tree behind menus, sheets and dialogs, so "is the profile
+  showing?" can't tell whether one is open: `close_sheets` looks for their IDs (`SHEET`).
 - Right after a block or unblock, a **reopened** profile can show Instagram's cached state from
-  before: first for a moment (an unblock reported "failed" although it had worked), then — on a
-  run while the phone was also recording its screen, everything ~4× slower — for over 18 s
-  (adidas and nike reported "failed" although they were blocked; the recording showed
-  Desbloquear right after the tap, then "Seguir" again on the reopened page). The proof is now
-  the open profile itself, which changes in place to Unblock / Follow (`confirmed`); reopening
-  (waiting up to 10 s for the expected state, `open_profile(want=…)`) is only the fallback. The
-  "You blocked <name>" sheet the first version expected (and tapped "Dismiss" on) never appeared.
-- When the same profile was already on screen, it counted as loaded at once and the ⋯ tap got
-  lost while the reopened page replaced it ("no Block item"): 1.5 s settle after opening, and a
-  second ⋯ tap if the menu doesn't show.
-
-Tested live: dry run (block and unblock), block, `--recheck` → already blocked, a made-up
-username → not found, unblock, skipping by the results file; then 4 block/unblock cycles in a row
-without a failure (`nytimes` was left unblocked). Offline checks:
-`uv run tests/test_profile_blocker.py`.
-
-**Brazilian Portuguese** (recorded the same day, same phone, Instagram switched to pt-BR): the
-screens are identical, resource IDs included; only the texts differ, and every one the tool
-needs was already in `UI_TEXT` — no code change was needed.
+  before: for a moment, and once — while the phone was also recording its screen, everything
+  ~4× slower — for over 18 s (blocks reported "failed" although they had worked). The proof is
+  the open profile changing in place (`confirmed`); reopening (`open_profile(want=…)`, up to
+  10 s) is only the fallback.
+- (Old block route) when the same profile was already on screen, the ⋯ tap got lost while the
+  reopened page replaced it: 1.5 s settle after opening.
 
 | | English | pt-BR |
 |---|---|---|
-| ⋯ button | Options | Opções |
-| menu item / confirmation button | Block | Bloquear |
-| confirmation | Block nytimes? · Block and Report | Bloquear nytimes? · Bloquear e denunciar |
-| blocked profile | Unblock · You've blocked this account | Desbloquear · Você bloqueou esta conta |
-| unblock dialog | Unblock nytimes? · Unblock / Cancel | Desbloquear nytimes? · Desbloquear / Cancelar |
+| ⋯ / menu button | Options | Opções |
+| block button / confirmation | Block · Block <name>? (· Block and Report) | Bloquear · Bloquear <name>? (· Bloquear e denunciar) |
+| blocked | Unblock · You've blocked this account | Desbloquear · Você bloqueou esta conta |
+| unblock dialog | Unblock <name>? · Unblock / Cancel | Desbloquear <name>? · Desbloquear / Cancelar |
 | not found | User not found | Usuário não encontrado |
+| blocked list (block route) | *not recorded:* Settings and activity · Blocked · Blocked accounts · Add | Configurações e atividade · Bloqueados · Contas bloqueadas · Adicionar |
 
-Tested live in pt-BR: dry runs (block and unblock), unblock, block, already blocked, not found,
-unblock again — all as in English.
+Tested live on the profile route, English and pt-BR: dry runs, block, unblock, already blocked,
+not found, skipping by the results file, 4 block/unblock cycles in a row. Offline checks (both
+routes): `uv run tests/test_profile_blocker.py`.
 
 ## 5. How things were tested (and how to re-test)
 
 **Without a phone.** `uv run tests/test_ui_text.py` checks all language-dependent text
 matching, English and pt-BR (4.12); `uv run tests/test_pause_stats.py` checks the pause and
 statistics timing on a simulated clock (4.10, 4.11); `uv run tests/test_brightness.py` checks the
-brightness keys and restore on a simulated phone (4.13).
+brightness keys and restore on a simulated phone (4.13); `uv run tests/test_profile_blocker.py`
+checks profile_blocker's list parsing, results file and screen checks (4.14).
 
 **Live runs.** Run the script for a few minutes with `timeout -s INT 300 … < /dev/null > log`
 and read the log. To test keys without a person at the keyboard, feed them through a
@@ -1417,6 +1468,11 @@ repost"** message, and every repost tap was refused → repost refusal detection
 - Idea: the player's `scrubber` element (pt-BR "Barra de pesquisa", seen on 451) may expose the
   playback position — a possible end-of-video signal better than frame comparison (4.5).
 - `--loops > 1` has not been exercised much.
+- profile_blocker (4.14): the blocked accounts route is recorded in pt-BR only — the English
+  texts there (`Settings and activity`, `Blocked`, `Blocked accounts`, `Add`) are unverified;
+  Instagram refusing blocks (rate limit → 30 min pause, doubling) was never hit, so that path is
+  untested; the keys (p, s, h) were not tried in a live run; `profile_blocker.exe` not yet run
+  on Windows itself (only its build's `--help` self-check on GitHub's runner).
 
 ## 7. Pitfalls checklist
 
@@ -1456,6 +1512,9 @@ repost"** message, and every repost tap was refused → repost refusal detection
   undone only after confirming they are ours and still on.
 - The share sheet holds chat recipients and "Add to story": tap only the exact "Copy link"
   element, and press Back only while the sheet is showing (4.7d).
+- Screens full of action buttons for other accounts (profile_blocker's search, 4.14): tap a
+  button only inside the row whose **username** matches exactly (never the full name), and
+  confirm only when the confirmation names that account.
 - Icon checks must test the icon's **shape** (its own pixels), never colour amounts over the
   whole button: the video behind it can be any colour (4.7 bugs).
 - When changing the frame detector, re-run `tools/tune_fallback.py` on **both** trace sets

@@ -7,7 +7,8 @@ On Windows this makes the release zip (GitHub Actions runs it on every v* tag); 
 builds the same bundle for Linux, to test the bundling without a Windows PC. Steps: PyInstaller
 (packaging/feed_autoplay.spec), add the files users need next to the exe, collect the
 third-party license notices, self-check the app, check the contents, zip + SHA-256.
-Output: build/feed_autoplay-<windows|linux>-<version>.zip
+Output: build/android-instagram-tools-<windows|linux>-<version>.zip (the folder inside is still
+feed_autoplay/, so unzipping an update over the old folder keeps the user's files)
 """
 import hashlib
 import importlib.metadata as md
@@ -120,7 +121,7 @@ def main():
     if bad:
         sys.exit(f"private or unexpected files in the bundle: {bad[:10]}")
 
-    zip_base = BUILD / f"feed_autoplay-{PLATFORM}-{ver}"
+    zip_base = BUILD / f"android-instagram-tools-{PLATFORM}-{ver}"
     zip_path = Path(shutil.make_archive(str(zip_base), "zip", root_dir=app.parent, base_dir=app.name))
     digest = hashlib.sha256(zip_path.read_bytes()).hexdigest()
     # "\n" line end on every system: `sha256sum -c` (Linux/macOS) fails on Windows' "\r\n"

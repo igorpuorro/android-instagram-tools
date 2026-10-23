@@ -7,7 +7,7 @@ like a person would — no Instagram API, no browser.
 | Tool | What it does | Status |
 |---|---|---|
 | **[feed_autoplay](#feed_autoplay-reference)** | plays the videos of your home timeline one after another, optionally at 2x, liking / reposting / copying links / saving them | in use |
-| **[profile_blocker](#profile_blocker-reference)** | blocks (or, with `--unblock`, unblocks) every profile in a list; Instagram in English or Brazilian Portuguese | new in 0.4.0 |
+| **[profile_blocker](#profile_blocker-reference)** | blocks (or, with `--unblock`, unblocks) every profile in a list; Instagram in Brazilian Portuguese (English: not fully tested yet) | new in 0.4.0, faster in 0.5.0 |
 
 > ⚠ Instagram's terms don't allow automated use. Acting at volume can get the account limited
 > (Instagram already refused reposts after ~100 in under 2 hours). Use the tools at your own
@@ -235,7 +235,7 @@ no uv, git or terminal needed.
 ### 2. Download (once)
 
 From the **[latest release](https://github.com/igorpuorro/android-instagram-tools/releases/latest)**
-(this link always opens the newest version), download `feed_autoplay-windows-<version>.zip` and
+(this link always opens the newest version), download `android-instagram-tools-windows-<version>.zip` and
 unzip it (e.g. to your Desktop). **For USB:** also install your phone maker's USB driver
 (Samsung: "Samsung Android USB Driver for Windows").
 
@@ -367,9 +367,11 @@ debugging.
 
 ## profile_blocker reference
 
-Blocks every profile in a text file, one after another: it opens each profile, taps **⋯ → Block**
-and confirms with the plain **Block** (never "Block and Report"), then reopens the profile to
-check it shows **Unblock**. `--unblock` undoes it: the profile's **Unblock** button, confirmed.
+Blocks every profile in a text file, one after another, through your own **blocked accounts**
+list: your profile (bottom right) → menu (top right) → **Bloqueados** (Blocked) → **+** → it
+searches each username and taps **Bloquear** (Block) on the row of exactly that username, confirms
+"Bloquear *name*?", and checks the profile is then on the list. `--unblock` undoes it through each
+profile's page: its **Unblock** button, confirmed.
 
 ```
 uv run profile_blocker.py profiles.txt --dry-run   # try first: stops at the confirmation, nothing changes
@@ -397,7 +399,9 @@ Every result goes to `runs/blocked-profiles.txt` (time, name, outcome). A later 
 profiles whose latest result there is *blocked* / *already blocked* (with `--unblock`:
 *unblocked* / *not blocked*), so a stopped run just continues. Keys: **p** pause, **s**
 statistics, **h** help, **q** quit; `runs/STOP` and `runs/PAUSE` work as for feed_autoplay.
-Profiles that don't exist are reported as *not found*. If Instagram refuses a block (rate limit),
+Profiles that don't exist are reported as *not found*; already blocked ones as *already
+blocked*. Tested with Instagram in Brazilian Portuguese; for English the texts of the blocked
+accounts screens are the expected ones but haven't been checked on a phone yet. If Instagram refuses a block (rate limit),
 the run pauses 30 min (doubling on repeats) and tries that profile again.
 
 ---

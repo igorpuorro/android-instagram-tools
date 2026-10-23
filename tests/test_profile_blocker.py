@@ -73,6 +73,40 @@ check("pt-BR unblock", bool(re.fullmatch(pb.exact("unblock"), "Desbloquear")), T
 check("menu item regex", [t for t in ("Block", "Unblock", "Block and Report", "Bloquear", "Desbloquear", "Bloquear e denunciar")
                           if re.fullmatch(pb.exact("block"), t)], ["Block", "Bloquear"])
 
+# ---- blocked accounts list and its search (+) ------------------------------------------------
+def row(user, full, button, top):
+    b = f"[0,{top}][1080,{top + 204}]"
+    return (f'<node text="" resource-id="{RID}blocked_list_container" package="com.instagram.android" '
+            f'content-desc="" clickable="true" bounds="{b}">'
+            + node("blocked_list_username", text=user) + node("blocked_list_subtitle", text=full)
+            + f'<node text="{button}" resource-id="{RID}unblock_button" package="com.instagram.android" '
+              f'content-desc="" clickable="true" bounds="[777,{top + 57}][1035,{top + 147}]" />'
+            + "</node>")
+
+
+results = screen(node("search_bar_real_field", text="chef.marco", desc="Pesquisar"),
+                 row("chef.marco", "Marco", "Bloquear", 246), row("chef.marco79", "chef.marco", "Bloquear", 450))
+check("rows", [r[:2] for r in pb.list_rows(results)], [("chef.marco", "Bloquear"), ("chef.marco79", "Bloquear")])
+check("row button bounds", pb.list_rows(results)[1][2], (777, 507, 1035, 597))
+check("search is not the list", pb.on_blocked_list(results), False)
+blocked = screen(node("action_bar_title", text="Contas bloqueadas", desc="Contas bloqueadas"),
+                 node(desc="Adicionar"), row("chef.marco", "Inclui outras contas", "Desbloquear", 245))
+check("blocked list", pb.on_blocked_list(blocked), True)
+check("blocked list en", pb.on_blocked_list(screen(node("action_bar_title", text="Blocked accounts"),
+                                                   node(desc="Add"))), True)
+check("other screen", pb.on_blocked_list(screen(node("action_bar_title", text="chef.marco"),
+                                                node(desc="Opções"))), False)
+sheet = results.replace("</hierarchy>", node("igds_headline_headline", text="Bloquear chef.marco?") + "</hierarchy>")
+check("question for the name", pb.block_question(sheet, "chef.marco"), True)
+check("question for another name", pb.block_question(sheet, "chef.marco79"), False)
+check("no question before the sheet", pb.block_question(results, "chef.marco"), False)
+check("question en", pb.block_question(screen(node("igds_headline_headline", text="Block chef.marco?")),
+                                       "Chef.Marco"), True)
+
+check("blocking progress", pb.blocking(screen(node("message", text="Bloqueando..."))), True)
+check("blocking progress en", pb.blocking(screen(node("message", text="Blocking..."))), True)
+check("no progress", pb.blocking(blocked), False)
+
 for f in failures:
     print("FAIL", f)
 print(f"{'all checks passed' if not failures else f'{len(failures)} check(s) failed'}")
