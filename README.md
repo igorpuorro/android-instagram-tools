@@ -6,7 +6,7 @@ like a person would — no Instagram API, no browser.
 
 | Tool | What it does | Status |
 |---|---|---|
-| **[feed_autoplay](#feed_autoplay-reference)** | plays the videos of your home timeline one after another, optionally at 2x, liking / reposting / copying links / saving them | in use |
+| **[feed_autoplay](#feed_autoplay-reference)** | plays the videos of your home timeline one after another, optionally at 2x, liking / commenting / reposting / copying links / saving them | in use |
 | **[profile_blocker](#profile_blocker-reference)** | blocks (or, with `--unblock`, unblocks) every profile in a list; Instagram in English or Brazilian Portuguese | new in 0.4.0, faster in 0.5.0 |
 
 > ⚠ Instagram's terms don't allow automated use. Acting at volume can get the account limited
@@ -286,6 +286,7 @@ The main ones (all of them: `--help`):
 | `--play` | **followed** · all | play only videos from accounts you follow, or every video |
 | `--2x` | (off) | play each video at 2x speed (key **x** switches it during the run) |
 | `--like` | none · **followed** · all | like the videos watched to the end |
+| `--comment` | **none** · followed · all | comment on them with `--comment-text`, e.g. `--comment-text "🇧🇷🇧🇷"` (public, under your name) |
 | `--repost` | **none** · followed · all | repost them (shown on your profile) |
 | `--share-link` | **none** · followed · all | Share → Copy link; links collected in `runs/shared-links.txt` |
 | `--save` | **none** · followed · all | save them to your private Saved collection |
@@ -293,8 +294,9 @@ The main ones (all of them: `--help`):
 | `--brightness PERCENT` | (unchanged) | phone screen brightness at start, 1–100 (keys **<** **>** change it; the phone's own is restored at the end) |
 
 "followed" = only for accounts you follow. Actions happen only for videos watched to the end, in
-the order of the buttons on screen (like → repost → share → save), and never twice: a post
-already liked/reposted/saved is left alone. Example:
+the order of the buttons on screen (like → comment → repost → share → save), and never twice: a
+post already liked/reposted/saved is left alone, and a commented post is remembered in
+`runs/commented.txt`, so later runs don't comment it again. Example:
 `--play all --2x --like all --repost followed`
 
 ### Helper commands
@@ -309,12 +311,12 @@ there?) — e.g. `uv run feed_autoplay.py connect`; in the Windows app `feed_aut
 | Key | | Key | |
 |---|---|---|---|
 | **n** | next video | **l** | like mode |
-| **p** | pause (the phone is yours) / resume | **r** | repost mode |
-| **x** | 2x on / off (from the next video) | **c** | copy-link mode |
-| **w** | play mode | **b** | save mode |
-| **<** / **>** | phone screen dimmer / brighter | **s** | statistics |
-| **a** | the phone's own brightness again (adaptive if it was) | **h** / **?** | help |
-| | | **q** | quit |
+| **p** | pause (the phone is yours) / resume | **m** | comment mode (needs `--comment-text`) |
+| **x** | 2x on / off (from the next video) | **r** | repost mode |
+| **w** | play mode | **c** | copy-link mode |
+| **<** / **>** | phone screen dimmer / brighter | **b** | save mode |
+| **a** | the phone's own brightness again (adaptive if it was) | **s** | statistics |
+| **h** / **?** | help | **q** | quit |
 
 Keys work when the tool runs in a terminal window, not in the background.
 
@@ -326,13 +328,16 @@ and continues from the Home feed. Paused time doesn't count in the statistics' p
 ### What it shows
 
 At start: the phone, the Instagram version and the settings. While running: one line per video
-and action (`▶` opened, `⏩` 2x, `♥` liked, `🔁` reposted, `🔗` link, `🔖` saved). Every 20
+and action (`▶` opened, `⏩` 2x, `♥` liked, `💬` commented, `🔁` reposted, `🔗` link, `🔖` saved). Every 20
 videos (and on **s** / when stopping) a statistics block, including the **pace** — how many
-videos an hour to expect. Files go to `runs/`: copied links (`shared-links.txt`) and diagnostics
+videos an hour to expect. Files go to `runs/`: copied links (`shared-links.txt`), commented posts (`commented.txt`) and diagnostics
 of videos that hit the time limit (`maxwatch-*.npz`).
 
 ### Good to know
 
+- **Comments are public and under your name.** The same text on many posts looks like spam to
+  Instagram: prefer `--comment followed`. If Instagram refuses a comment, the tool pauses
+  commenting (30 min, longer if it repeats), as for reposts.
 - **Instagram limits reposts.** After many reposts it answers "Unable to repost"; the tool
   notices, doesn't count it, and pauses reposting (30 min, longer if it repeats).
   `--repost followed` is much gentler than `all`.
@@ -409,7 +414,7 @@ block (rate limit), the run pauses 30 min (doubling on repeats) and tries that p
 
 ## Privacy
 
-The `runs/` folder (run logs with the accounts that were played, your copied links, the
+The `runs/` folder (run logs with the accounts that were played, your copied links and commented posts, the
 profiles you blocked, diagnostics) and `.env` (your phone's address) are personal — `.gitignore` keeps them out of the
 repository. So is the **tuning data** (`tools/traces*/`, `tools/icon_samples/`): screenshots of
 a real feed, used only to tune the tools and kept off the repository — record your own with

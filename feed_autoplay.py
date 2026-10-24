@@ -9,11 +9,13 @@ Flow: find a video post in the feed -> tap it (opens full-screen player with sou
 --like none|followed|all picks which fully watched videos get liked;
 --repost none|followed|all which get reposted (default none: reposts show on your profile);
 --share-link none|followed|all which get Share -> Copy link (links saved to runs/shared-links.txt);
---save none|followed|all which get saved to your private Saved collection (default none).
+--save none|followed|all which get saved to your private Saved collection (default none);
+--comment none|followed|all with --comment-text TEXT which get that comment (default none).
 
 Keys while running (h shows them):
   n = next video  p = pause (hand the phone over) / resume  x = 2x on/off  w = play mode
-  l = like mode  r = repost mode  c = copy-link mode  b = save mode  < > = phone brightness
+  l = like mode  m = comment mode  r = repost mode  c = copy-link mode  b = save mode
+  < > = phone brightness
   a = the phone's own brightness again  s = statistics  q = quit
 Without keys (background runs): create the file runs/STOP to stop cleanly; while the file
 runs/PAUSE exists the run is paused.
@@ -29,6 +31,7 @@ import argparse
 import importlib.resources
 import os
 import re
+import shlex
 import signal
 import subprocess
 import sys
@@ -37,7 +40,7 @@ import time
 import traceback
 from pathlib import Path
 
-__version__ = "0.5.1"  # same as pyproject.toml; the Windows release tag is v<version>
+__version__ = "0.6.0"  # same as pyproject.toml; the Windows release tag is v<version>
 
 WINDOWS = os.name == "nt"
 # Running as the Windows app built by PyInstaller (packaging/, DEVELOPMENT.md 1): the bundled
@@ -205,6 +208,9 @@ PLAY_MODES = ["followed", "all"]
 LIKE_MODES = ["none", "followed", "all"]
 REPOST_MODES = ["none", "followed", "all"]
 SAVE_MODES = ["none", "followed", "all"]
+COMMENT_MODES = ["none", "followed", "all"]
+# every commented post (date, post identity, header): a later run doesn't comment it again
+COMMENTED = RUNS / "commented.txt"
 SHARE_MODES = ["none", "followed", "all"]
 SHARED_LINKS = RUNS / "shared-links.txt"  # every copied link is appended here
 # mode keys: key -> (args attribute, label, cycle, note)
@@ -212,6 +218,7 @@ SPEED_MODES = ["off", "on"]  # key x: 2x speed (--2x sets the start value)
 MODE_KEYS = {
     "w": ("play", "play", PLAY_MODES, "followed = skip accounts you don't follow"),
     "l": ("like", "like", LIKE_MODES, ""),
+    "m": ("comment", "comment", COMMENT_MODES, "public, under your name"),
     "r": ("repost", "repost", REPOST_MODES, "shows on your profile"),
     "c": ("share_link", "copy link", SHARE_MODES, "→ runs/shared-links.txt"),
     "b": ("save", "save", SAVE_MODES, "private to you"),
@@ -446,7 +453,10 @@ class Player:
         self.ended_by = None  # how the last watch() ended, for the stats
         self.repost_paused_until = 0.0  # set when Instagram refuses a repost
         self.repost_backoff = REPOST_BACKOFF_MIN
-        self.stats = dict(played=0, liked=0, reposted=0, repost_refused=0, saved=0, links=0, skipped=0, suggested_skipped=0,
+        self.comment_paused_until = 0.0  # set when Instagram refuses a comment
+        self.comment_backoff = REPOST_BACKOFF_MIN
+        self.commented = None  # post identities from runs/commented.txt (loaded when first needed)
+        self.stats = dict(played=0, liked=0, reposted=0, repost_refused=0, commented=0, comment_refused=0, saved=0, links=0, skipped=0, suggested_skipped=0,
                           end_log=0, end_frames=0, end_static=0, end_max=0, errors=0)
         self.started = time.time()
         self.waited = dict(locked=0.0, reconnect=0.0, paused=0.0)  # idle, excluded from "active" rate
@@ -527,7 +537,8 @@ class Player:
             f"suggested not played {s['suggested_skipped']}")
         log(f"   pace     {pace}")
         log(f"            {whole}")
-        log(f"   actions  liked {s['liked']} · reposted {s['reposted']} (refused {s['repost_refused']}) · "
+        log(f"   actions  liked {s['liked']} · commented {s['commented']} (refused {s['comment_refused']}) · "
+            f"reposted {s['reposted']} (refused {s['repost_refused']}) · "
             f"links copied {s['links']} · saved {s['saved']}")
         log(f"   ends     log {s['end_log']} · frames {s['end_frames']} · static {s['end_static']} · "
             f"max-time {s['end_max']}")
@@ -590,7 +601,9 @@ class Player:
         k = self.keys.get()
         if k == "q":
             raise Quit
-        if k in MODE_KEYS:
+        if k == "m" and not self.args.comment_text:
+            log("comment mode needs a text: start with --comment-text TEXT")
+        elif k in MODE_KEYS:
             attr, label, modes, _ = MODE_KEYS[k]
             new = modes[(modes.index(getattr(self.args, attr)) + 1) % len(modes)]
             setattr(self.args, attr, new)
@@ -701,8 +714,9 @@ class Player:
         own = "a  brightness".ljust(20) + "the phone's own again"
         log(f"              {own:<45} (adaptive if it was)")
         log(f"   actions    {mode('l')}")
-        log(f"   (screen    {mode('r')}")
-        log(f"    order)    {mode('c')}")
+        log(f"   (screen    {mode('m')}")
+        log(f"    order)    {mode('r')}")
+        log(f"              {mode('c')}")
         log(f"              {mode('b')}")
         log(f"   info       s  statistics so far")
         log(f"              h  this help (also ?)")
@@ -1243,6 +1257,141 @@ class Player:
             log("  ♡ not liked: you don't follow this account")
         return False
 
+    def should_comment(self, followed):
+        """--comment none | followed | all; only asked for videos watched to the end.
+        Paused for a while after Instagram refuses a comment (like reposts)."""
+        if self.args.comment == "all" or (self.args.comment == "followed" and followed):
+            if time.time() < self.comment_paused_until:
+                log(f"  not commented: paused after Instagram refused one "
+                    f"(until {time.strftime('%H:%M', time.localtime(self.comment_paused_until))})")
+                return False
+            return True
+        if self.args.comment == "followed":
+            log("  not commented: you don't follow this account")
+        return False
+
+    def already_commented(self, desc):
+        """Was this post commented before, in this or an earlier run (runs/commented.txt)?
+        Matched like is_seen(): author/location part + estimated posting time."""
+        if self.commented is None:
+            self.commented = []
+            try:
+                for line in COMMENTED.read_text(encoding="utf-8").splitlines():
+                    parts = line.split("\t")
+                    if len(parts) >= 4:
+                        posted = None if parts[2] == "-" else float(parts[2])
+                        self.commented.append((parts[1], posted, float(parts[3])))
+            except OSError:
+                pass
+        prefix, posted, tol = self.post_id(desc)
+        return any(p == prefix and (posted is None and q is None or
+                                    posted is not None and q is not None and abs(posted - q) <= max(tol, t))
+                   for p, q, t in self.commented)
+
+    def record_comment(self, desc):
+        prefix, posted, tol = self.post_id(desc)
+        self.commented.append((prefix, posted, tol))
+        try:
+            COMMENTED.parent.mkdir(exist_ok=True)
+            with COMMENTED.open("a", encoding="utf-8") as f:
+                f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')}\t{prefix}\t"
+                        f"{'-' if posted is None else f'{posted:.0f}'}\t{tol:.0f}\t{desc}\n")
+        except Exception as e:  # a full disk etc. must not stop the run
+            log(f"  could not write {COMMENTED} ({type(e).__name__}: {e})")
+
+    COMMENT_BOX = RID + "layout_comment_thread_edittext_multiline"
+
+    def close_comment_sheet(self):
+        """Back hides the keyboard, then closes the sheet -- only pressed while the comment box
+        is there: one Back too many would leave the player."""
+        for _ in range(3):
+            if not self.d(resourceId=self.COMMENT_BOX).exists:
+                return
+            self.d.press("back")
+            time.sleep(1.0)
+
+    def comment_in_player(self, desc):
+        """Post --comment-text on the open video.
+
+        Findings (player, Instagram 451): `comment_button` ("Comment") opens the comment sheet
+        with the box `layout_comment_thread_edittext_multiline` (also reached through the
+        player's "Add comment..." field); typing makes `layout_comment_thread_post_button_icon`
+        ("Post") appear. uiautomator2's set_text types emoji correctly (read back exactly),
+        but the hierarchy dump shows characters outside the BMP as dots -- so the text is
+        checked with get_text(), never in a dump. Back twice closes the sheet (keyboard, sheet).
+        A post is commented once: runs/commented.txt keeps them across runs."""
+        text = self.args.comment_text
+        if self.already_commented(desc):
+            log("  💬 already commented (runs/commented.txt)")
+            return
+        btn = self.d(resourceId=RID + "comment_button")
+        if not btn.exists:
+            log("  comment button not found (comments may be off for this post)")
+            return
+        btn.click()
+        box = self.d(resourceId=self.COMMENT_BOX)
+        if not box.wait(timeout=4):
+            log("  no comment box (comments may be limited or off for this post)")
+            self.close_comment_sheet()
+            return
+        try:
+            box.set_text(text)
+            time.sleep(0.8)
+            typed = box.get_text()
+        except Exception as e:
+            typed = None
+            log(f"  comment not typed ({type(e).__name__})")
+        post = self.d(resourceId=RID + "layout_comment_thread_post_button_icon")
+        if typed != text or not post.exists:
+            if typed is not None and typed != text:
+                log("  comment not posted: the text didn't type correctly")
+            elif typed is not None:
+                log("  comment not posted: no Post button")
+            try:
+                box.clear_text()
+            except Exception:
+                pass
+            self.close_comment_sheet()
+            return
+        post.click()
+        posted, refused = False, False
+        end = time.time() + 8
+        while time.time() < end:
+            time.sleep(0.5)
+            if self.d(resourceId=RID + "snackbar_message", textMatches=REFUSED).exists:
+                refused = True
+                break
+            try:
+                if box.get_text() != text:  # the box empties (back to its hint) once posted
+                    posted = True
+                    break
+            except Exception:
+                pass
+        if refused or not posted:
+            try:  # don't leave the text in the box (it would be posted with a later tap)
+                box.clear_text()
+            except Exception:
+                pass
+        self.close_comment_sheet()
+        if refused:
+            self.comment_refused()
+        elif posted:
+            log(f"  💬 commented {text}")
+            self.stats["commented"] += 1
+            self.comment_backoff = REPOST_BACKOFF_MIN
+            self.record_comment(desc)
+        else:
+            log("  comment not confirmed (the text stayed in the box)")
+
+    def comment_refused(self):
+        """Instagram refused a comment (a limit, or spam protection): pause commenting,
+        doubling the pause on repeated refusals -- as for reposts."""
+        self.stats["comment_refused"] += 1
+        minutes = self.comment_backoff
+        self.comment_paused_until = time.time() + minutes * 60
+        self.comment_backoff = min(self.comment_backoff * 2, REPOST_BACKOFF_MAX)
+        log(f"  ⚠ Instagram refused the comment (probably a limit): pausing comments for {minutes} min")
+
     def should_repost(self, followed):
         """--repost none | followed | all; only asked for videos watched to the end.
         Paused for a while after Instagram refuses a repost (see repost_in_player)."""
@@ -1479,15 +1628,17 @@ class Player:
             f"pausing reposts for {minutes} min")
 
     def play_in_player(self, followed, desc=""):
-        """2x, watch to the end, then like, repost, copy the link and save (per options)."""
+        """2x, watch to the end, then like, comment, repost, copy the link and save (per options)."""
         speed = 2 if self.args.speed2x and self.speed_2x() else 1
         if not self.watch(self.in_viewer, followed=followed, speed=speed):
             return
         if self.should_like(followed):
             self.like_in_player()
+        if self.should_comment(followed):
+            self.comment_in_player(desc)
         if self.should_repost(followed):
             self.repost_in_player()
-        # same order as the buttons on screen (top to bottom): like, repost, share, save.
+        # same order as the buttons on screen (top to bottom): like, comment, repost, share, save.
         # Each step closes its own sheet (share sheet, collections sheet) before the next.
         if self.should_share(followed):
             self.copy_link_in_player(desc)
@@ -1514,6 +1665,8 @@ class Player:
             self.like_in_feed(desc)
         if self.args.repost != "none":
             log("  not reposted: the Repost button only exists in the full-screen player")
+        if self.args.comment != "none":
+            log("  not commented: only implemented in the full-screen player")
         if self.args.share_link != "none":
             log("  no link copied: only implemented in the full-screen player")
         if self.args.save != "none":
@@ -1547,8 +1700,10 @@ def startup_report(d, args, keys_on, settings_from=None):
     extra = f" · {args.loops} passes" if args.loops > 1 else ""
     log(f"   playback   play {args.play} · 2x {'on' if args.speed2x else 'off'} · "
         f"max {args.max_watch:g} s per video{extra}")
-    log(f"   actions    like {args.like} · repost {args.repost} · copy link {args.share_link} · "
-        f"save {args.save}")
+    log(f"   actions    like {args.like} · comment {args.comment} · repost {args.repost} · "
+        f"copy link {args.share_link} · save {args.save}")
+    if args.comment_text:
+        log(f"   comment    {args.comment_text!r}" + ("" if args.comment != "none" else " (comment mode none: key m)"))
     if args.brightness:
         log(f"   screen     brightness {args.brightness}% (the phone's own is restored at the end)")
     if settings_from:
@@ -1734,10 +1889,10 @@ COMMANDS = {"connect": connect_wizard, "disconnect": disconnect, "adb": run_adb,
 
 def settings_args():
     """Options from settings.txt (Windows app, when started without options): words of each
-    line, `#` starts a comment."""
+    line, `#` starts a comment, "quotes" keep a text with spaces together (--comment-text)."""
     words = []
     for line in SETTINGS_FILE.read_text(encoding="utf-8-sig").splitlines():
-        words += line.split("#", 1)[0].split()
+        words += shlex.split(line, comments=True, posix=True)
     return words
 
 
@@ -1815,6 +1970,12 @@ def main():
     g.add_argument("--like", choices=LIKE_MODES, default="followed",
                    help="which fully watched videos to like: none = never; followed (default) = only "
                         "from accounts you follow; all = every one")
+    g.add_argument("--comment", choices=COMMENT_MODES, default="none",
+                   help="which fully watched videos to comment on with --comment-text (public, under "
+                        "your name): none (default) = never; followed = only from accounts you "
+                        "follow; all = every one. Posts are commented once (runs/commented.txt)")
+    g.add_argument("--comment-text", metavar="TEXT", default="",
+                   help='the comment, e.g. --comment-text "🇧🇷🇧🇷" (quote it if it has spaces)')
     g.add_argument("--repost", choices=REPOST_MODES, default="none",
                    help="which fully watched videos to repost (shown on your profile): none "
                         "(default) = never; followed = only from accounts you follow; all = every one")
@@ -1857,6 +2018,9 @@ def main():
     if FROZEN and not argv and SETTINGS_FILE.exists():
         argv, settings_from = settings_args(), SETTINGS_FILE.name
     args = p.parse_args(argv)
+    if args.comment != "none" and not args.comment_text.strip():
+        p.error("--comment needs --comment-text TEXT (the comment to post)")
+    args.comment_text = args.comment_text.strip()
 
     for f in (STOP_FILE, PAUSE_FILE):  # left over from an earlier run: must not stop/pause this one
         try:

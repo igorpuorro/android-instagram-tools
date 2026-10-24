@@ -3,7 +3,7 @@ android-instagram-tools for Windows: feed_autoplay + profile_blocker
 
 Two tools for Instagram on your Android phone, nothing to install:
 - feed_autoplay.exe plays the videos of your home timeline one after another, optionally at
-  2x, liking / reposting / copying links / saving them;
+  2x, liking / commenting / reposting / copying links / saving them;
 - profile_blocker.exe blocks every profile in a list (unblock.bat unblocks them again) --
   see "Blocking profiles" below.
 
@@ -46,7 +46,8 @@ The first time, Windows may say "Windows protected your PC": click "More info", 
 
 Keys while it runs (in its window):
   n next video    p pause (the phone is yours) / resume    x 2x on/off
-  w play mode     l like mode    r repost mode    c copy-link mode    b save mode
+  w play mode     l like mode    m comment mode    r repost mode    c copy-link mode
+  b save mode
   < > phone screen dimmer / brighter (your own brightness comes back at the end)
   a   your own brightness again now (adaptive if it was)
   s statistics    h / ? help     q quit
@@ -55,17 +56,20 @@ Using the phone in between: press p, use the phone, press p again. q stops it: t
 statistics are always printed and the window stays open until you press Enter. (Closing the
 window with X also stops it, but without the statistics.)
 
-Files: the runs folder next to the exe gets your copied links (shared-links.txt) and
+Files: the runs folder next to the exe gets your copied links (shared-links.txt), the posts
+you commented (commented.txt) and
 diagnostics. It's personal -- don't share it.
 
 
 Options (settings.txt, or after feed_autoplay.exe in a terminal)
 -----------------------------------------------------------------
 (default = what applies when an option is left out; the settings.txt created on the
-first start sets play all, 2x and all actions)
+first start sets play all, 2x, and like, repost, copy link and save all)
   --play followed|all            only accounts you follow (default), or every video
   --2x                           play at 2x speed
   --like none|followed|all       like videos watched to the end (default followed)
+  --comment none|followed|all    comment on them (default none; public, under your name)
+  --comment-text "TEXT"          the comment, e.g. --comment-text "🇧🇷🇧🇷"
   --repost none|followed|all     repost them (default none; shown on your profile)
   --share-link none|followed|all Share > Copy link (default none)
   --save none|followed|all       save to your private Saved collection (default none)

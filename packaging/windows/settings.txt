@@ -11,6 +11,8 @@
 
 # actions on videos watched to the end: none, followed or all
 --like all
+# --comment followed       # public, under your name; needs the text below
+# --comment-text "🇧🇷🇧🇷"   # the comment (keep the quotes)
 --repost all             # reposts show on your profile; Instagram limits them
 --share-link all         # copies each link into runs\shared-links.txt
 --save all               # private Saved collection

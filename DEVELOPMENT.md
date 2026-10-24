@@ -23,8 +23,9 @@ Contents
    - 4.4 [2x speed](#44-2x-speed)
    - 4.5 [Detecting the end of a video](#45-detecting-the-end-of-a-video)
    - 4.6 [Followed vs. suggested accounts](#46-followed-vs-suggested-accounts)
-   - 4.7 [Liking](#47-liking), [reposting](#47b-reposting), [copying links](#47d-copying-links)
-     and [saving](#47c-saving) — done in this order, the order of the buttons on screen
+   - 4.7 [Liking](#47-liking), [commenting](#47e-commenting), [reposting](#47b-reposting),
+     [copying links](#47d-copying-links) and [saving](#47c-saving) — done in this order, the
+     order of the buttons on screen
    - 4.8 [Navigation and recovery](#48-navigation-and-recovery)
    - 4.9 [Device connection](#49-device-connection)
    - 4.10 [Keyboard controls](#410-keyboard-controls)
@@ -70,6 +71,7 @@ all use.
 | | `--max-watch S` | 300 | cap per video |
 | | `--brightness PERCENT` | unchanged | phone screen brightness at start, restored at the end (4.13) |
 | **actions** on videos watched to the end, done in screen order | `--like none\|followed\|all` | `followed` | which ones get liked |
+| | `--comment none\|followed\|all` + `--comment-text TEXT` | `none` | which get the comment (public; once per post, `runs/commented.txt`; 4.7e) |
 | | `--repost none\|followed\|all` | `none` | which get reposted (reposts show on your profile; `all` on long runs hits Instagram's repost limit, see 4.7b) |
 | | `--share-link none\|followed\|all` | `none` | which get Share → Copy link; links are appended to `runs/shared-links.txt` |
 | | `--save none\|followed\|all` | `none` | which get saved (to your private Saved collection) |
@@ -91,6 +93,7 @@ Keys while running (only when started from a terminal):
 | **a** | the phone's own brightness again, the app leaves it alone (4.13) |
 | **w** | cycle play mode: followed → all |
 | **l** | cycle like mode: none → followed → all |
+| **m** | cycle comment mode: none → followed → all (only with `--comment-text`) |
 | **r** | cycle repost mode: none → followed → all |
 | **c** | cycle copy-link mode: none → followed → all |
 | **b** | cycle save mode: none → followed → all |
@@ -101,7 +104,7 @@ Keys while running (only when started from a terminal):
 At startup the app prints a block with the phone, the Instagram version and the settings:
 
 ```
-── feed_autoplay 0.3.0 ─────────────────────────────────────────
+── feed_autoplay 0.6.0 ─────────────────────────────────────────
    phone      Samsung SM-A515F · Android 11 · serial R58N91XKQZT · Wi-Fi
    instagram  451.0.0.53.80
    playback   play all · 2x on · max 300 s per video
@@ -289,7 +292,7 @@ android-instagram-tools/
 ├── tools/                        dev tools, per tool
 ├── packaging/                    the Windows app: spec, build.py, files for the zip (1)
 ├── .github/workflows/            windows-release.yml: builds and publishes the zip on v* tags
-├── tests/                        checks without a phone (test_ui_text.py 4.12, test_pause_stats.py 4.10, 4.11, test_brightness.py 4.13, test_profile_blocker.py 4.14)
+├── tests/                        checks without a phone (test_ui_text.py 4.12, test_pause_stats.py 4.10, 4.11, test_brightness.py 4.13, test_comment.py 4.7e, test_profile_blocker.py 4.14)
 └── Dockerfile, compose.yaml, README.md, DEVELOPMENT.md, CONTAINER.md
 ```
 
@@ -324,6 +327,7 @@ Until then everything lives in `feed_autoplay.py`:
 | `Player.repost_confirmed` / `repost_refused` | catch Instagram's delayed "Unable to repost"; pause reposting with back-off |
 | `Player.icon_white` + `assets/icon_masks.npz` | white-pixel map of a player icon, compared against recorded icon shapes |
 | `Player.should_like` / `should_repost` / `should_share` / `should_save` | apply `--like` / `--repost` / `--share-link` / `--save` (none / followed / all) |
+| `Player.comment_in_player` / `close_comment_sheet` / `already_commented` / `record_comment` | the comment action (4.7e); `COMMENTED` = `runs/commented.txt` |
 | `Player.copy_link_in_player` / `close_share_sheet` | Share → "Copy link", read the link from the phone's clipboard, log it to `runs/shared-links.txt` |
 | `Player.save_in_player` | save only when not saved; close the collections sheet; count-drop safety net |
 | `Player.locked` / `wake` | lock-screen detection; waits for an unlock, never gestures on it |
@@ -763,6 +767,45 @@ checking the icon first; the video had been reposted earlier by the account owne
 removed the owner's repost (it was re-reposted at once, but that counts as a new repost).
 Any test that taps Repost must check `repost_state()` before **every** tap, including undos.
 
+### 4.7e Commenting
+
+`--comment none|followed|all` (default **none**) with `--comment-text TEXT`, key **m** to cycle
+(it refuses without a text), only for videos watched to the end, done right after the like
+(screen order: like, comment, repost, share, save). Public and under the account's name, so
+it is opt-in like reposts.
+
+Findings (player, Instagram 451, 2026-10-24):
+- `comment_button` ("Comment") opens the comment sheet; the player's "Add comment..." field
+  (`comment_composer_text_view`) opens the same sheet. The box is
+  `layout_comment_thread_edittext_multiline` (hint "What do you think of this?" / "Join the
+  conversation…"); a row of quick emoji sits above it.
+- Typing makes `layout_comment_thread_post_button_icon` (content-desc "Post") appear.
+- uiautomator2's `set_text` types emoji correctly (`get_text` reads back exactly "🇧🇷🇧🇷"),
+  but **the hierarchy dump shows characters outside the BMP as dots** ("🇧🇷🇧🇷" → 8 dots, one
+  per UTF-16 unit) — the text is checked with `get_text()`, never in a dump, and the screen
+  can't tell whether the account already commented that text.
+- Posting: the box empties (back to its hint) — the confirmation used; a refusal in the
+  `snackbar_message` (the shared `REFUSED` texts) pauses commenting with the repost back-off
+  (30 min, doubling to 4 h). Text left in the box is cleared, so a later tap can't post it.
+- Closing: Back hides the keyboard, Back again closes the sheet — pressed only while the box
+  exists (one Back too many leaves the player).
+- No comment button / no box (comments limited or off): logged, skipped.
+
+**Once per post:** `runs/commented.txt` (date, author/location part, estimated posting time,
+tolerance, header) is read at the first comment and checked like `is_seen()` (4.2): the same
+author with a posting time within the label's rounding counts as commented — across runs, as
+the relative label moves on. Conservative: two posts of one account with indistinguishable
+times count as one.
+
+Tested live (2026-10-24): one comment through `comment_in_player` (count 10518 → 10519, the
+account's comment on top of the list, the player still open, the record written); a full run
+with keys (started with comment mode none, **m** → followed): the first video skipped as
+"already commented", the next one commented ("commented 1" in the stats).
+`tests/test_comment.py`: the record across runs and moved labels, `settings.txt` with a quoted
+text, **m** without a text, modes and the refusal pause. Not tried yet: a refusal by
+Instagram, a post with comments off, pt-BR (resource IDs and `REFUSED` cover it, untested), the
+Windows app.
+
 ### 4.8 Navigation and recovery
 
 - `ensure_feed()`: relaunch Instagram if another app is in front; Back out of the player;
@@ -857,8 +900,9 @@ with the current mode marked inside each key's cycle:
               <  >  brightness    dimmer / brighter         now 30%
               a  brightness       the phone's own again     (adaptive if it was)
    actions    l  like mode        none → followed → [all]
-   (screen    r  repost mode      none → [followed] → all  shows on your profile
-    order)    c  copy link mode   [none] → followed → all  → runs/shared-links.txt
+   (screen    m  comment mode     none → [followed] → all  public, under your name
+    order)    r  repost mode      none → [followed] → all  shows on your profile
+              c  copy link mode   [none] → followed → all  → runs/shared-links.txt
               b  save mode        [none] → followed → all  private to you
    info       s  statistics so far
               h  this help (also ?)
@@ -942,7 +986,7 @@ Logged every 20 played videos, on quit and on key **s** (`Player.report`):
    videos   played 304 · skipped 0 · suggested not played 0
    pace     ~62 videos/h at the current pace (likely 46–77)
             whole run 28.4/h (60.0/h active)
-   actions  liked 302 · reposted 0 (refused 0) · links copied 0 · saved 0
+   actions  liked 302 · commented 0 (refused 0) · reposted 0 (refused 0) · links copied 0 · saved 0
    ends     log 231 · frames 67 · static 1 · max-time 3
    waits    errors recovered 17 · locked 5h 14m · reconnecting 24m · paused 0m
 ────────────────────────────────────────────────────────────────
@@ -1276,7 +1320,8 @@ is being reopened gets lost.
 **Without a phone.** `uv run tests/test_ui_text.py` checks all language-dependent text
 matching, English and pt-BR (4.12); `uv run tests/test_pause_stats.py` checks the pause and
 statistics timing on a simulated clock (4.10, 4.11); `uv run tests/test_brightness.py` checks the
-brightness keys and restore on a simulated phone (4.13); `uv run tests/test_profile_blocker.py`
+brightness keys and restore on a simulated phone (4.13); `uv run tests/test_comment.py` the
+comment record and options (4.7e); `uv run tests/test_profile_blocker.py`
 checks profile_blocker's list parsing, results file and screen checks (4.14).
 
 **Live runs.** Run the script for a few minutes with `timeout -s INT 300 … < /dev/null > log`
