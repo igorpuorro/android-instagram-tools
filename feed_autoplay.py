@@ -10,7 +10,8 @@ Flow: find a video post in the feed -> tap it (opens full-screen player with sou
 --repost none|followed|all which get reposted (default none: reposts show on your profile);
 --share-link none|followed|all which get Share -> Copy link (links saved to runs/shared-links.txt);
 --save none|followed|all which get saved to your private Saved collection (default none);
---comment none|followed|all with --comment-text TEXT which get that comment (default none).
+--comment none|followed|all which get a comment (default none): --comment-text TEXT, or
+--comment-script FILE whose output is the comment for each video.
 
 Keys while running (h shows them):
   n = next video  p = pause (hand the phone over) / resume  x = 2x on/off  w = play mode
@@ -32,6 +33,7 @@ import importlib.resources
 import os
 import re
 import shlex
+import shutil
 import signal
 import subprocess
 import sys
@@ -40,7 +42,7 @@ import time
 import traceback
 from pathlib import Path
 
-__version__ = "0.6.0"  # same as pyproject.toml; the Windows release tag is v<version>
+__version__ = "0.7.0"  # same as pyproject.toml; the Windows release tag is v<version>
 
 WINDOWS = os.name == "nt"
 # Running as the Windows app built by PyInstaller (packaging/, DEVELOPMENT.md 1): the bundled
@@ -211,6 +213,64 @@ SAVE_MODES = ["none", "followed", "all"]
 COMMENT_MODES = ["none", "followed", "all"]
 # every commented post (date, post identity, header): a later run doesn't comment it again
 COMMENTED = RUNS / "commented.txt"
+COMMENT_MAX = 2200  # Instagram's longest comment (characters)
+COMMENT_SCRIPT_TIMEOUT = 15  # seconds a --comment-script may take
+
+
+def script_command(path):
+    """How to run a --comment-script, by its extension: .py with Python (the one running this,
+    or an installed one for the Windows app), .bat/.cmd with cmd, .ps1 with PowerShell, .sh
+    with sh; anything else is run directly (an executable, or a script with a #! line).
+    None if no Python is found for a .py."""
+    ext = path.suffix.lower()
+    if ext == ".py":
+        if not FROZEN:
+            return [sys.executable, str(path)]
+        for name, extra in (("py", ["-3"]), ("python3", []), ("python", [])):
+            exe = shutil.which(name)
+            if exe:
+                return [exe, *extra, str(path)]
+        return None
+    if WINDOWS and ext in (".bat", ".cmd"):
+        return ["cmd", "/c", str(path)]
+    if ext == ".ps1":
+        return ["powershell" if WINDOWS else "pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass",
+                "-File", str(path)]
+    if ext == ".sh" and not WINDOWS:
+        return ["sh", str(path)]
+    return [str(path)]
+
+
+def run_comment_script(cmd, author="", post="", followed=False, test=False):
+    """Run the --comment-script and return (comment, None), or (None, why not).
+
+    The script gets the video in environment variables: IG_AUTHOR (the account, as the player
+    shows it), IG_POST (the post's header, e.g. "chef.marco posted a video 2 hours ago") and
+    IG_FOLLOWED (1 = you follow the account, 0 = not), and IG_TEST=1 on the trial run at start
+    (nothing is posted); it prints the comment (UTF-8) on standard output. Nothing printed = no
+    comment on this video."""
+    env = dict(os.environ, IG_AUTHOR=author or "", IG_POST=post or "", IG_FOLLOWED="1" if followed else "0",
+               IG_TEST="1" if test else "0", PYTHONIOENCODING="utf-8", PYTHONUTF8="1")
+    try:
+        r = subprocess.run(cmd, stdin=subprocess.DEVNULL, capture_output=True, env=env,
+                           timeout=COMMENT_SCRIPT_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        return None, f"the script took more than {COMMENT_SCRIPT_TIMEOUT} s"
+    except OSError as e:
+        return None, f"the script didn't start ({e.strerror or e})"
+    if r.returncode:
+        err = r.stderr.decode("utf-8", "replace").strip().splitlines()
+        return None, f"the script failed (exit {r.returncode}" + (f": {err[-1]}" if err else "") + ")"
+    try:
+        text = r.stdout.decode("utf-8")
+    except UnicodeDecodeError:  # a Windows batch file prints in the console's code page
+        text = r.stdout.decode(sys.getfilesystemencoding() if not WINDOWS else "oem", "replace")
+    text = text.strip()
+    if not text:
+        return None, "the script printed nothing"
+    if len(text) > COMMENT_MAX:
+        return None, f"the script printed {len(text)} characters (Instagram takes up to {COMMENT_MAX})"
+    return text, None
 SHARE_MODES = ["none", "followed", "all"]
 SHARED_LINKS = RUNS / "shared-links.txt"  # every copied link is appended here
 # mode keys: key -> (args attribute, label, cycle, note)
@@ -601,8 +661,8 @@ class Player:
         k = self.keys.get()
         if k == "q":
             raise Quit
-        if k == "m" and not self.args.comment_text:
-            log("comment mode needs a text: start with --comment-text TEXT")
+        if k == "m" and not (self.args.comment_text or self.args.comment_script):
+            log("comment mode needs a text: start with --comment-text TEXT or --comment-script FILE")
         elif k in MODE_KEYS:
             attr, label, modes, _ = MODE_KEYS[k]
             new = modes[(modes.index(getattr(self.args, attr)) + 1) % len(modes)]
@@ -1310,8 +1370,8 @@ class Player:
             self.d.press("back")
             time.sleep(1.0)
 
-    def comment_in_player(self, desc):
-        """Post --comment-text on the open video.
+    def comment_in_player(self, desc, followed=False):
+        """Post --comment-text, or what --comment-script prints for this video, on the open video.
 
         Findings (player, Instagram 451): `comment_button` ("Comment") opens the comment sheet
         with the box `layout_comment_thread_edittext_multiline` (also reached through the
@@ -1320,10 +1380,15 @@ class Player:
         but the hierarchy dump shows characters outside the BMP as dots -- so the text is
         checked with get_text(), never in a dump. Back twice closes the sheet (keyboard, sheet).
         A post is commented once: runs/commented.txt keeps them across runs."""
-        text = self.args.comment_text
         if self.already_commented(desc):
             log("  💬 already commented (runs/commented.txt)")
             return
+        text = self.args.comment_text
+        if self.args.comment_script:
+            text, why = run_comment_script(self.args.comment_script, self.player_author(), desc, followed)
+            if not text:
+                log(f"  not commented: {why}")
+                return
         btn = self.d(resourceId=RID + "comment_button")
         if not btn.exists:
             log("  comment button not found (comments may be off for this post)")
@@ -1635,7 +1700,7 @@ class Player:
         if self.should_like(followed):
             self.like_in_player()
         if self.should_comment(followed):
-            self.comment_in_player(desc)
+            self.comment_in_player(desc, followed)
         if self.should_repost(followed):
             self.repost_in_player()
         # same order as the buttons on screen (top to bottom): like, comment, repost, share, save.
@@ -1702,8 +1767,10 @@ def startup_report(d, args, keys_on, settings_from=None):
         f"max {args.max_watch:g} s per video{extra}")
     log(f"   actions    like {args.like} · comment {args.comment} · repost {args.repost} · "
         f"copy link {args.share_link} · save {args.save}")
-    if args.comment_text:
-        log(f"   comment    {args.comment_text!r}" + ("" if args.comment != "none" else " (comment mode none: key m)"))
+    if args.comment_text or args.comment_script:
+        what = (f"{args.comment_text!r}" if args.comment_text else
+                f"from {Path(args.comment_script[-1]).name}, e.g. {args.comment_sample!r}")
+        log(f"   comment    {what}" + ("" if args.comment != "none" else " (comment mode none: key m)"))
     if args.brightness:
         log(f"   screen     brightness {args.brightness}% (the phone's own is restored at the end)")
     if settings_from:
@@ -1887,6 +1954,25 @@ def self_check(argv):
 COMMANDS = {"connect": connect_wizard, "disconnect": disconnect, "adb": run_adb, "check": self_check}
 
 
+def comment_script_check(p, name):
+    """--comment-script: find the file (as given, or next to the app) and try it once, so a
+    broken script stops the start instead of every comment. Returns (command, sample)."""
+    path = Path(name).expanduser()
+    if not path.is_absolute() and not path.exists() and (APP_DIR / path).exists():
+        path = APP_DIR / path
+    if not path.is_file():
+        p.error(f"--comment-script: {name} not found")
+    cmd = script_command(path.resolve())
+    if cmd is None:
+        p.error(f"--comment-script: {path.name} needs Python, and none is installed "
+                "(python.org; or use a .bat / .ps1 script)")
+    sample, why = run_comment_script(cmd, "example.account", "example.account posted a video 2 hours ago", True,
+                                     test=True)
+    if why and why != "the script printed nothing":
+        p.error(f"--comment-script: {why}")
+    return cmd, sample or "(nothing for the example)"
+
+
 def settings_args():
     """Options from settings.txt (Windows app, when started without options): words of each
     line, `#` starts a comment, "quotes" keep a text with spaces together (--comment-text)."""
@@ -1971,11 +2057,16 @@ def main():
                    help="which fully watched videos to like: none = never; followed (default) = only "
                         "from accounts you follow; all = every one")
     g.add_argument("--comment", choices=COMMENT_MODES, default="none",
-                   help="which fully watched videos to comment on with --comment-text (public, under "
+                   help="which fully watched videos to comment on with --comment-text or --comment-script (public, under "
                         "your name): none (default) = never; followed = only from accounts you "
                         "follow; all = every one. Posts are commented once (runs/commented.txt)")
-    g.add_argument("--comment-text", metavar="TEXT", default="",
+    c = g.add_mutually_exclusive_group()
+    c.add_argument("--comment-text", metavar="TEXT", default="",
                    help='the comment, e.g. --comment-text "🇧🇷🇧🇷" (quote it if it has spaces)')
+    c.add_argument("--comment-script", metavar="FILE", default="",
+                   help="a script that prints the comment, run for each video (.py, .bat/.cmd, .ps1, "
+                        ".sh or an executable); it gets IG_AUTHOR, IG_POST and IG_FOLLOWED (1/0) in "
+                        "its environment; printing nothing skips the video")
     g.add_argument("--repost", choices=REPOST_MODES, default="none",
                    help="which fully watched videos to repost (shown on your profile): none "
                         "(default) = never; followed = only from accounts you follow; all = every one")
@@ -2018,9 +2109,11 @@ def main():
     if FROZEN and not argv and SETTINGS_FILE.exists():
         argv, settings_from = settings_args(), SETTINGS_FILE.name
     args = p.parse_args(argv)
-    if args.comment != "none" and not args.comment_text.strip():
-        p.error("--comment needs --comment-text TEXT (the comment to post)")
+    if args.comment != "none" and not (args.comment_text.strip() or args.comment_script):
+        p.error("--comment needs --comment-text TEXT or --comment-script FILE (the comment to post)")
     args.comment_text = args.comment_text.strip()
+    if args.comment_script:
+        args.comment_script, args.comment_sample = comment_script_check(p, args.comment_script)
 
     for f in (STOP_FILE, PAUSE_FILE):  # left over from an earlier run: must not stop/pause this one
         try:

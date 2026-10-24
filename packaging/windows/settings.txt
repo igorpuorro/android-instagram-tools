@@ -11,8 +11,9 @@
 
 # actions on videos watched to the end: none, followed or all
 --like all
-# --comment followed       # public, under your name; needs the text below
+# --comment followed       # public, under your name; needs a text or a script below
 # --comment-text "🇧🇷🇧🇷"   # the comment (keep the quotes)
+# --comment-script comment_greeting.bat   # or a script that prints a comment per video (README.txt)
 --repost all             # reposts show on your profile; Instagram limits them
 --share-link all         # copies each link into runs\shared-links.txt
 --save all               # private Saved collection

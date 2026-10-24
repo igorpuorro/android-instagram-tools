@@ -70,6 +70,13 @@ first start sets play all, 2x, and like, repost, copy link and save all)
   --like none|followed|all       like videos watched to the end (default followed)
   --comment none|followed|all    comment on them (default none; public, under your name)
   --comment-text "TEXT"          the comment, e.g. --comment-text "🇧🇷🇧🇷"
+  --comment-script FILE          or a script that prints the comment, run for each video:
+                                 .bat/.cmd, .ps1, or .py (needs Python from python.org).
+                                 It gets IG_AUTHOR (the account), IG_POST (the post's
+                                 header) and IG_FOLLOWED (1/0); printing nothing skips the
+                                 video. A name without a folder is looked up next to the exe.
+                                 Example: comment_greeting.bat (a greeting for the time of
+                                 day; edit its texts with Notepad, keep it saved as UTF-8).
   --repost none|followed|all     repost them (default none; shown on your profile)
   --share-link none|followed|all Share > Copy link (default none)
   --save none|followed|all       save to your private Saved collection (default none)

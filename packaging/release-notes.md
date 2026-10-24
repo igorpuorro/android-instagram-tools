@@ -1,7 +1,9 @@
 **android-instagram-tools for Windows** — two tools for Instagram on your Android phone,
 nothing to install (no Python, no uv, no git):
 - **`feed_autoplay.exe`** plays the videos of your home timeline one after another, optionally
-  at 2x, liking / commenting / reposting / copying links / saving them;
+  at 2x, liking / commenting / reposting / copying links / saving them. *0.7.0:* the comment
+  can come from a script, a different one per video — `--comment-script comment_greeting.bat`
+  (in the folder: a greeting for the time of day; edit its texts with Notepad);
 - **`profile_blocker.exe`** *(0.5.0: about twice as fast)* blocks every profile in a list (`profiles.txt`,
   created on its first start), through your blocked accounts list (Bloqueados → +);
   **`unblock.bat`** unblocks them again (0.5.1: also through the list). Instagram in English

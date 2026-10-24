@@ -286,7 +286,7 @@ The main ones (all of them: `--help`):
 | `--play` | **followed** · all | play only videos from accounts you follow, or every video |
 | `--2x` | (off) | play each video at 2x speed (key **x** switches it during the run) |
 | `--like` | none · **followed** · all | like the videos watched to the end |
-| `--comment` | **none** · followed · all | comment on them with `--comment-text`, e.g. `--comment-text "🇧🇷🇧🇷"` (public, under your name) |
+| `--comment` | **none** · followed · all | comment on them with `--comment-text`, e.g. `--comment-text "🇧🇷🇧🇷"`, or with what `--comment-script FILE` prints (public, under your name) |
 | `--repost` | **none** · followed · all | repost them (shown on your profile) |
 | `--share-link` | **none** · followed · all | Share → Copy link; links collected in `runs/shared-links.txt` |
 | `--save` | **none** · followed · all | save them to your private Saved collection |
@@ -311,7 +311,7 @@ there?) — e.g. `uv run feed_autoplay.py connect`; in the Windows app `feed_aut
 | Key | | Key | |
 |---|---|---|---|
 | **n** | next video | **l** | like mode |
-| **p** | pause (the phone is yours) / resume | **m** | comment mode (needs `--comment-text`) |
+| **p** | pause (the phone is yours) / resume | **m** | comment mode (needs `--comment-text` or `--comment-script`) |
 | **x** | 2x on / off (from the next video) | **r** | repost mode |
 | **w** | play mode | **c** | copy-link mode |
 | **<** / **>** | phone screen dimmer / brighter | **b** | save mode |
@@ -338,6 +338,14 @@ of videos that hit the time limit (`maxwatch-*.npz`).
 - **Comments are public and under your name.** The same text on many posts looks like spam to
   Instagram: prefer `--comment followed`. If Instagram refuses a comment, the tool pauses
   commenting (30 min, longer if it repeats), as for reposts.
+- **A comment script** writes a different comment for each video: `--comment-script FILE`
+  runs FILE (`.py`, `.bat`/`.cmd`, `.ps1`, `.sh` or a program) before each comment and posts
+  what it prints. It gets the video in environment variables: `IG_AUTHOR` (the account),
+  `IG_POST` (the post's header), `IG_FOLLOWED` (`1`/`0`), and `IG_TEST=1` on a trial run at
+  start. Printing nothing skips the video; a failing script stops the start. Example, a greeting
+  for the time of day: [`examples/comment_greeting.py`](examples/comment_greeting.py):
+  `--comment followed --comment-script examples/comment_greeting.py`. The Windows app has the
+  same as a batch file next to the exe: `--comment-script comment_greeting.bat`
 - **Instagram limits reposts.** After many reposts it answers "Unable to repost"; the tool
   notices, doesn't count it, and pauses reposting (30 min, longer if it repeats).
   `--repost followed` is much gentler than `all`.

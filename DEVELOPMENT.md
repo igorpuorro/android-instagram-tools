@@ -71,7 +71,7 @@ all use.
 | | `--max-watch S` | 300 | cap per video |
 | | `--brightness PERCENT` | unchanged | phone screen brightness at start, restored at the end (4.13) |
 | **actions** on videos watched to the end, done in screen order | `--like none\|followed\|all` | `followed` | which ones get liked |
-| | `--comment none\|followed\|all` + `--comment-text TEXT` | `none` | which get the comment (public; once per post, `runs/commented.txt`; 4.7e) |
+| | `--comment none\|followed\|all` + `--comment-text TEXT` or `--comment-script FILE` | `none` | which get the comment (public; once per post, `runs/commented.txt`; 4.7e) |
 | | `--repost none\|followed\|all` | `none` | which get reposted (reposts show on your profile; `all` on long runs hits Instagram's repost limit, see 4.7b) |
 | | `--share-link none\|followed\|all` | `none` | which get Share → Copy link; links are appended to `runs/shared-links.txt` |
 | | `--save none\|followed\|all` | `none` | which get saved (to your private Saved collection) |
@@ -93,7 +93,7 @@ Keys while running (only when started from a terminal):
 | **a** | the phone's own brightness again, the app leaves it alone (4.13) |
 | **w** | cycle play mode: followed → all |
 | **l** | cycle like mode: none → followed → all |
-| **m** | cycle comment mode: none → followed → all (only with `--comment-text`) |
+| **m** | cycle comment mode: none → followed → all (only with `--comment-text` or `--comment-script`) |
 | **r** | cycle repost mode: none → followed → all |
 | **c** | cycle copy-link mode: none → followed → all |
 | **b** | cycle save mode: none → followed → all |
@@ -104,7 +104,7 @@ Keys while running (only when started from a terminal):
 At startup the app prints a block with the phone, the Instagram version and the settings:
 
 ```
-── feed_autoplay 0.6.0 ─────────────────────────────────────────
+── feed_autoplay 0.7.0 ─────────────────────────────────────────
    phone      Samsung SM-A515F · Android 11 · serial R58N91XKQZT · Wi-Fi
    instagram  451.0.0.53.80
    playback   play all · 2x on · max 300 s per video
@@ -157,7 +157,8 @@ file).
 **Windows app (one-folder zip, `packaging/`, README D):** for users who shouldn't need uv, git
 or a terminal. PyInstaller builds `feed_autoplay.exe` plus an `_internal\` folder with Python,
 the packages, adb and the icon masks — since 0.4.0 also `profile_blocker.exe` (4.14), sharing
-`_internal\`; the zip adds `connect.bat`, `disconnect.bat`, `unblock.bat`, `README.txt` and
+`_internal\`; the zip adds `connect.bat`, `disconnect.bat`, `unblock.bat`, `comment_greeting.bat` (since
+0.7.0, an example `--comment-script`, 4.7e), `README.txt` and
 `LICENSES\`. *One folder, not one file*: a one-file exe unpacks
 itself into a new temp folder on every start, and adb's background server keeps running from
 there (folder locked, leftovers, a different adb path each run); one folder also starts at once
@@ -221,7 +222,8 @@ and gets fewer antivirus false alarms.
   (`profile_blocker.exe` + `unblock.bat`, 4.14), v0.5.0 (profile_blocker blocks through the
   blocked accounts list, ~2× faster; 4.14; zip and release named android-instagram-tools),
   v0.5.1 (the zip's folder renamed from `feed_autoplay` to `android-instagram-tools`; fixes:
-  scrolling to Blocked (`UiObjectNotFoundError` in 0.5.0), unblocking through the list). The release pages of v0.2.0–v0.2.2 were deleted
+  scrolling to Blocked (`UiObjectNotFoundError` in 0.5.0), unblocking through the list), v0.6.0
+  (comments, `--comment-text`, 4.7e), v0.7.0 (`--comment-script` + `comment_greeting.bat`, 4.7e). The release pages of v0.2.0–v0.2.2 were deleted
   on 2026-10-22 (superseded; nobody depended on them) and the one of v0.5.0 on 2026-10-23
   (superseded by v0.5.1 the same day: its scrolling bug); their **tags are kept** as the record
   of each version. To rebuild an old zip: Actions → windows-release → Run workflow → pick the
@@ -292,6 +294,7 @@ android-instagram-tools/
 ├── tools/                        dev tools, per tool
 ├── packaging/                    the Windows app: spec, build.py, files for the zip (1)
 ├── .github/workflows/            windows-release.yml: builds and publishes the zip on v* tags
+├── examples/                     comment_greeting.py: a --comment-script (4.7e)
 ├── tests/                        checks without a phone (test_ui_text.py 4.12, test_pause_stats.py 4.10, 4.11, test_brightness.py 4.13, test_comment.py 4.7e, test_profile_blocker.py 4.14)
 └── Dockerfile, compose.yaml, README.md, DEVELOPMENT.md, CONTAINER.md
 ```
@@ -769,8 +772,8 @@ Any test that taps Repost must check `repost_state()` before **every** tap, incl
 
 ### 4.7e Commenting
 
-`--comment none|followed|all` (default **none**) with `--comment-text TEXT`, key **m** to cycle
-(it refuses without a text), only for videos watched to the end, done right after the like
+`--comment none|followed|all` (default **none**) with `--comment-text TEXT` or
+`--comment-script FILE` (one of them), key **m** to cycle (it refuses without either), only for videos watched to the end, done right after the like
 (screen order: like, comment, repost, share, save). Public and under the account's name, so
 it is opt-in like reposts.
 
@@ -797,14 +800,38 @@ author with a posting time within the label's rounding counts as commented — a
 the relative label moves on. Conservative: two posts of one account with indistinguishable
 times count as one.
 
+**Comment script** (`--comment-script FILE`, `script_command` / `run_comment_script` /
+`comment_script_check`): a per-video comment. The program is chosen by extension — `.py` with
+the Python running the tool (the Windows app looks for `py -3`, `python3`, `python`: it bundles
+no interpreter for user scripts), `.bat`/`.cmd` with `cmd /c` (Windows), `.ps1` with PowerShell
+(`powershell` on Windows, `pwsh` elsewhere), `.sh` with `sh`, anything else run directly. It
+gets `IG_AUTHOR` (`player_author()`, the player's author line: co-authors come joined, e.g.
+"a and b"), `IG_POST` (the header desc), `IG_FOLLOWED` (1/0), `IG_TEST` (1 on the trial run),
+and `PYTHONUTF8=1` / `PYTHONIOENCODING=utf-8` so a Python script prints emoji on Windows too;
+stdin is closed (the keys stay with the tool). Its stdout, stripped, is the comment: UTF-8,
+else the console code page (a `.bat`). Nothing printed → that video isn't commented (the script
+decides); exit ≠ 0, more than 15 s (`COMMENT_SCRIPT_TIMEOUT`) or over 2200 characters
+(`COMMENT_MAX`) → not commented, logged. It runs after the "already commented" check and before
+the sheet opens, so a failure touches nothing. At start the file is looked up as given, then
+next to the app (`APP_DIR`, for a name in `settings.txt`), and run once with a made-up video
+(`IG_TEST=1`): a failure stops the start with the reason, the sample goes in the startup block
+(`comment    from comment_greeting.py, e.g. '...'`). Examples: `examples/comment_greeting.py`,
+and for the Windows app `packaging/windows/comment_greeting.bat` (in the zip): `chcp 65001` so
+`echo` prints UTF-8 (the file is UTF-8, CRLF), no delayed expansion (it would eat the `!` of the
+greetings: `call set` picks the text), `%random%` plus the time's hundredths (cmd seeds
+`%random%` per second). Run with Windows' cmd (from WSL, 2026-10-24): every time-of-day branch
+(via `TIME`), the mention, a co-author line, no variables at all, and through `run_comment_script`.
+
 Tested live (2026-10-24): one comment through `comment_in_player` (count 10518 → 10519, the
 account's comment on top of the list, the player still open, the record written); a full run
 with keys (started with comment mode none, **m** → followed): the first video skipped as
 "already commented", the next one commented ("commented 1" in the stats).
 `tests/test_comment.py`: the record across runs and moved labels, `settings.txt` with a quoted
-text, **m** without a text, modes and the refusal pause. Not tried yet: a refusal by
+text, **m** without a text and with a script, modes and the refusal pause; the script's command
+per extension, its environment, empty output, failure, timeout, length, the start check. Not tried yet: a refusal by
 Instagram, a post with comments off, pt-BR (resource IDs and `REFUSED` cover it, untested), the
-Windows app.
+Windows app; a comment from `--comment-script` on the phone (the posting path is the same as for
+`--comment-text`), `.bat`/`.ps1` scripts on Windows.
 
 ### 4.8 Navigation and recovery
 
