@@ -261,15 +261,18 @@ def run_comment_script(cmd, author="", post="", followed=False, test=False):
     def decoded(out):
         try:
             return out.decode("utf-8")
-        except UnicodeDecodeError:  # Windows programs print in the system's code page
-            return out.decode("mbcs" if WINDOWS else sys.getfilesystemencoding(), "replace")
+        except UnicodeDecodeError:  # Windows: cmd prints in the console's code page, others in the system's
+            return out.decode(("oem" if cmd[0] == "cmd" else "mbcs") if WINDOWS else sys.getfilesystemencoding(),
+                              "replace")
 
     if WINDOWS and r.returncode == 9009 and cmd[-1].lower().endswith(".py"):
         # 9009 = not found: Windows' "python" without Python installed only offers the Store
         return None, "Python isn't installed (python.org), or use a .bat script like comment_greeting.bat"
     if r.returncode:
-        err = decoded(r.stderr).strip().splitlines()
-        return None, f"the script failed (exit {r.returncode}" + (f": {err[-1]}" if err else "") + ")"
+        err = " ".join(decoded(r.stderr).split())
+        if len(err) > 200:
+            err = err[:199] + "…"
+        return None, f"the script failed (exit {r.returncode}" + (f": {err}" if err else "") + ")"
     text = decoded(r.stdout).strip()
     if not text:
         return None, "the script printed nothing"
