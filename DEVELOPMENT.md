@@ -821,6 +821,11 @@ and for the Windows app `packaging/windows/comment_greeting.bat` (in the zip): `
 greetings: `call set` picks the text), `%random%` plus the time's hundredths (cmd seeds
 `%random%` per second). Run with Windows' cmd (from WSL, 2026-10-24): every time-of-day branch
 (via `TIME`), the mention, a co-author line, no variables at all, and through `run_comment_script`.
+The Windows app (CI build of 0.7.0, run from WSL on Windows 11, no phone): `--comment-script
+comment_greeting.bat` by name from another folder (found next to the exe, trial run passed);
+a `.py` with only the Store's `python` shortcut → exit 9009 → "Python isn't installed"; a
+failing `.bat` → cmd's whole message, decoded right (cmd prints in the console's code page
+(`oem`), the Store shortcut in the system's (`mbcs`)).
 
 Tested live (2026-10-24): one comment through `comment_in_player` (count 10518 → 10519, the
 account's comment on top of the list, the player still open, the record written); a full run
@@ -830,8 +835,8 @@ with keys (started with comment mode none, **m** → followed): the first video 
 text, **m** without a text and with a script, modes and the refusal pause; the script's command
 per extension, its environment, empty output, failure, timeout, length, the start check. Not tried yet: a refusal by
 Instagram, a post with comments off, pt-BR (resource IDs and `REFUSED` cover it, untested), the
-Windows app; a comment from `--comment-script` on the phone (the posting path is the same as for
-`--comment-text`), `.bat`/`.ps1` scripts on Windows.
+Windows app with a phone; a comment from `--comment-script` on the phone (the posting path is
+the same as for `--comment-text`), `.ps1` scripts.
 
 ### 4.8 Navigation and recovery
 
