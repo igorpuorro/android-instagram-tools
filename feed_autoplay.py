@@ -258,14 +258,16 @@ def run_comment_script(cmd, author="", post="", followed=False, test=False):
         return None, f"the script took more than {COMMENT_SCRIPT_TIMEOUT} s"
     except OSError as e:
         return None, f"the script didn't start ({e.strerror or e})"
+    def decoded(out):
+        try:
+            return out.decode("utf-8")
+        except UnicodeDecodeError:  # Windows programs print in the console's code page
+            return out.decode("oem" if WINDOWS else sys.getfilesystemencoding(), "replace")
+
     if r.returncode:
-        err = r.stderr.decode("utf-8", "replace").strip().splitlines()
+        err = decoded(r.stderr).strip().splitlines()
         return None, f"the script failed (exit {r.returncode}" + (f": {err[-1]}" if err else "") + ")"
-    try:
-        text = r.stdout.decode("utf-8")
-    except UnicodeDecodeError:  # a Windows batch file prints in the console's code page
-        text = r.stdout.decode(sys.getfilesystemencoding() if not WINDOWS else "oem", "replace")
-    text = text.strip()
+    text = decoded(r.stdout).strip()
     if not text:
         return None, "the script printed nothing"
     if len(text) > COMMENT_MAX:
