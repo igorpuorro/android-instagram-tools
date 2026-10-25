@@ -18,16 +18,18 @@ jobs:
     env:
       PYTHONUTF8: "1"
     steps:
-      - uses: actions/checkout@v4
+      # all three run on Node.js 24 (Node.js 20 is deprecated on GitHub's runners)
+      - uses: actions/checkout@v7
 
-      - uses: astral-sh/setup-uv@v6
+      # setup-uv publishes no major tags since v8 (supply-chain safety): pinned to the v10.3.2 commit
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e  # v10.3.2
 
       # the exact package versions of uv.lock (--frozen), Python 3.13 like the tested setup;
       # build.py also self-checks the app (check, --help, adb version) and the bundle contents
       - name: Build and check the app
         run: uv run --frozen --python 3.13 --group build packaging/build.py
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: android-instagram-tools-windows
           path: |
