@@ -33,6 +33,7 @@ Contents
    - 4.12 [Languages](#412-languages) — English and Brazilian Portuguese
    - 4.13 [Screen brightness](#413-screen-brightness) — keys < >, `--brightness`
    - 4.14 [profile_blocker](#414-profile_blocker) — the second tool: block / unblock a list of profiles
+   - 4.15 [Phone battery](#415-phone-battery) — warnings, a clean stop when low, `--battery-stop`
 5. [How things were tested (and how to re-test)](#5-how-things-were-tested-and-how-to-re-test)
 6. [Known limitations and ideas](#6-known-limitations-and-ideas)
 7. [Pitfalls checklist](#7-pitfalls-checklist)
@@ -76,6 +77,7 @@ all use.
 | | `--share-link none\|followed\|all` | `none` | which get Share → Copy link; links are appended to `runs/shared-links.txt` |
 | | `--save none\|followed\|all` | `none` | which get saved (to your private Saved collection) |
 | **device** | `-s`, `--serial SERIAL` | auto | adb serial; only needed with several *different* phones |
+| | `--battery-stop PERCENT` | 10 | stop cleanly at this battery level when not charging, warnings from +10 %; 0 = warnings only (4.15) |
 | **advanced tuning** | `--no-log` | (log on) | end-of-video by frame comparison only |
 | | `--ref-start`, `--loop-thresh`, `--loop-rel` | per-speed profile | override the frame-comparison profile (see 4.5) |
 | | `--move-thresh`, `--min-watch` | 12 / 3 | frame-comparison tuning (see 4.5) |
@@ -104,11 +106,12 @@ Keys while running (only when started from a terminal):
 At startup the app prints a block with the phone, the Instagram version and the settings:
 
 ```
-── feed_autoplay 0.7.0 ─────────────────────────────────────────
+── feed_autoplay 0.8.0 ─────────────────────────────────────────
    phone      Samsung SM-A515F · Android 11 · serial R58N91XKQZT · Wi-Fi
    instagram  451.0.0.53.80
    playback   play all · 2x on · max 300 s per video
    actions    like all · repost followed · copy link none · save none
+   battery    64% · discharging · 31 °C · stops at 10% unless charging
    end        Instagram's log + frame comparison
    keys       press h for help
 ────────────────────────────────────────────────────────────────
@@ -295,7 +298,7 @@ android-instagram-tools/
 ├── packaging/                    the Windows app: spec, build.py, files for the zip (1)
 ├── .github/workflows/            windows-release.yml: builds and publishes the zip on v* tags
 ├── examples/                     comment_greeting.py: a --comment-script (4.7e)
-├── tests/                        checks without a phone (test_ui_text.py 4.12, test_pause_stats.py 4.10, 4.11, test_brightness.py 4.13, test_comment.py 4.7e, test_profile_blocker.py 4.14)
+├── tests/                        checks without a phone (test_ui_text.py 4.12, test_pause_stats.py 4.10, 4.11, test_brightness.py 4.13, test_comment.py 4.7e, test_profile_blocker.py 4.14, test_battery.py 4.15)
 └── Dockerfile, compose.yaml, README.md, DEVELOPMENT.md, CONTAINER.md
 ```
 
@@ -307,6 +310,7 @@ Until then everything lives in `feed_autoplay.py`:
 | `Keys` | non-blocking key reader (termios/select on Linux/macOS, msvcrt on Windows); inert when stdin isn't a TTY |
 | `STOP_FILE` (`runs/STOP`) | checked in `Player.poll()`: creating it stops the run cleanly (stats printed); cleared at startup |
 | `PAUSE_FILE` (`runs/PAUSE`) | checked in `Player.key()`: while it exists the run is paused (`Player.pause`); cleared at startup |
+| `Battery` / `read_battery` / `Player.check_battery` | the phone's battery: warnings, the clean stop, charger events, heat (4.15) |
 | `Brightness` | the phone's screen brightness: keys < >, `--brightness`, saved and restored (4.13) |
 | `Player.pause` / `Resumed` | the hand-the-phone-over pause (4.10); `Resumed` sends the run back to the Home feed |
 | `Player.poll` / `Player.key` | poll: the stop file and the global keys (q, x, w, l, r, c, b, s, h/?); key: adds the pause (p / `runs/PAUSE`) and returns only n to the caller |
@@ -1021,6 +1025,7 @@ Logged every 20 played videos, on quit and on key **s** (`Player.report`):
    actions  liked 302 · commented 0 (refused 0) · reposted 0 (refused 0) · links copied 0 · saved 0
    ends     log 231 · frames 67 · static 1 · max-time 3
    waits    errors recovered 17 · locked 5h 14m · reconnecting 24m · paused 0m
+   battery  64% · discharging · 31 °C
 ────────────────────────────────────────────────────────────────
 ```
 
@@ -1347,6 +1352,39 @@ is open — `SHEET`); a **reopened** profile can show Instagram's cached state f
 over 18 s, so the open screen changing is the proof, not a reload; a tap while the same profile
 is being reopened gets lost.
 
+### 4.15 Phone battery
+
+With the phone away and the screen dimmed, a low battery went unnoticed until the phone died
+mid-run (the app then only saw a lost connection and kept retrying). `Battery` watches it.
+
+- **Reading:** `adb shell dumpsys battery` (any Android, no root, ~0.1 s): `level`, `status`
+  (2 charging, 3 discharging, 4 not charging, 5 full), `AC/USB/Wireless/Dock powered`,
+  `temperature` (tenths of °C). `read_battery()` / `describe_battery()` →
+  `64% · discharging · 31 °C`. Battery saver: `settings get global low_power` (startup only —
+  it can slow the phone, as in the lag investigation of 4.13).
+- **When:** `Player.check_battery()` between videos and inside the watch loop, at most every
+  `Battery.EVERY` = 120 s (the first time right at start). The statistics block (every 20
+  videos, **s**, the end) reads it fresh: `battery  64% · discharging · 31 °C`.
+- **Not on a charger:** a warning and the terminal bell at `--battery-stop` + 10 % (default
+  20 %), repeated every 3 % lower; at `--battery-stop` % (default 10) the run stops like **q**
+  (`Quit`: final statistics, brightness restored) with `⏹ stopping: phone battery 9% and not
+  charging`. `--battery-stop 0` = warnings only (from 20 %). Any "powered" source counts as on
+  the charger — no warnings, no stop; plugging in / out is logged (`🔌`), and warnings start
+  over after charging.
+- **Heat:** a warning at 42 °C (again only after cooling below 40 °C), a stop at 45 °C — also
+  on a charger (long runs heat the phone; heat ages the battery).
+- **The bell** (`\a`) only goes to a terminal (`isatty`), never into a log file. Desktop
+  notifications were left out: they need different tools per system.
+- **Tested (2026-10-29):** `tests/test_battery.py` (real `dumpsys battery` text: charging /
+  discharging / full / wireless / unreadable; warnings and their repeats, the stop, charger
+  events, heat, `--battery-stop 0` and 30). Live with Android's own battery faking
+  (`dumpsys battery unplug`, `set level 19`, `set usb 1`, `set status 2`, `set level 9`;
+  `dumpsys battery reset` afterwards) and a 20 s interval: startup line (it also caught the
+  phone's battery saver), warning + bell at 19 %, `🔌 on the charger` mid-video ~4 s after
+  plugging, `🔌 unplugged` then the stop at 9 % with statistics, brightness restored. The first
+  version checked only between videos and missed the charger events of a playing video —
+  hence the check in the watch loop.
+
 ## 5. How things were tested (and how to re-test)
 
 **Without a phone.** `uv run tests/test_ui_text.py` checks all language-dependent text
@@ -1354,7 +1392,8 @@ matching, English and pt-BR (4.12); `uv run tests/test_pause_stats.py` checks th
 statistics timing on a simulated clock (4.10, 4.11); `uv run tests/test_brightness.py` checks the
 brightness keys and restore on a simulated phone (4.13); `uv run tests/test_comment.py` the
 comment record and options (4.7e); `uv run tests/test_profile_blocker.py`
-checks profile_blocker's list parsing, results file and screen checks (4.14).
+checks profile_blocker's list parsing, results file and screen checks (4.14); `uv run
+tests/test_battery.py` the battery warnings and stop on a simulated phone and clock (4.15).
 
 **Live runs.** Run the script for a few minutes with `timeout -s INT 300 … < /dev/null > log`
 and read the log. To test keys without a person at the keyboard, feed them through a

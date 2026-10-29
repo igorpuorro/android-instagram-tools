@@ -291,6 +291,7 @@ The main ones (all of them: `--help`):
 | `--share-link` | **none** · followed · all | Share → Copy link; links collected in `runs/shared-links.txt` |
 | `--save` | **none** · followed · all | save them to your private Saved collection |
 | `--max-watch S` | **300** | stop watching a video after S seconds |
+| `--battery-stop PERCENT` | **10** | stop cleanly when the phone's battery is this low and not charging (warnings from 10 % above; `0` = warnings only) |
 | `--brightness PERCENT` | (unchanged) | phone screen brightness at start, 1–100 (keys **<** **>** change it; the phone's own is restored at the end) |
 
 "followed" = only for accounts you follow. Actions happen only for videos watched to the end, in
@@ -334,6 +335,11 @@ videos an hour to expect. Files go to `runs/`: copied links (`shared-links.txt`)
 of videos that hit the time limit (`maxwatch-*.npz`).
 
 ### Good to know
+
+- **Phone battery:** the tool shows it at start and in the statistics. When the phone isn't
+  charging it warns from 20 % (with the terminal's bell) and stops cleanly at 10 % — before
+  the phone dies mid-run; `--battery-stop` changes the level, `0` only warns. It also warns at
+  42 °C and stops at 45 °C.
 
 - **Comments are public and under your name.** The same text on many posts looks like spam to
   Instagram: prefer `--comment followed`. If Instagram refuses a comment, the tool pauses

@@ -82,6 +82,8 @@ first start sets play all, 2x, and like, repost, copy link and save all)
   --save none|followed|all       save to your private Saved collection (default none)
   --max-watch S                  stop watching a video after S seconds (default 300)
   --brightness PERCENT           phone screen brightness at start, 1-100 (default: unchanged)
+  --battery-stop PERCENT         stop when the phone's battery is this low and not charging
+                                 (default 10, warnings from 20; 0 = warnings only)
 All options: feed_autoplay.exe --help
 
 
