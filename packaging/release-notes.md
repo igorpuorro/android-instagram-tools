@@ -6,7 +6,9 @@ nothing to install (no Python, no uv, no git):
   (in the folder: a greeting for the time of day; edit its texts with Notepad). *0.8.0:* it
   watches the phone's battery — warns, and stops cleanly at 10 % when not charging
   (`--battery-stop`). *0.9.0:* about 3.5–4 s less between videos (fewer swipes, shorter
-  waits; switching the phone's battery saver off saves ~2 s more);
+  waits; switching the phone's battery saver off saves ~2 s more). *0.9.1:* likes are counted
+  right again — a change on Instagram's side had the tool undo them ("like did not register");
+  refused likes are counted and pause liking;
 - **`profile_blocker.exe`** *(0.5.0: about twice as fast)* blocks every profile in a list (`profiles.txt`,
   created on its first start), through your blocked accounts list (Bloqueados → +);
   **`unblock.bat`** unblocks them again (0.5.1: also through the list). Instagram in English

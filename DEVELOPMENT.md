@@ -108,7 +108,7 @@ At startup the app prints a block with the phone, the Instagram version, the set
 phone's battery:
 
 ```
-── feed_autoplay 0.9.0 ─────────────────────────────────────────
+── feed_autoplay 0.9.1 ─────────────────────────────────────────
    phone      Samsung SM-A515F · Android 11 · serial R58N91XKQZT · Wi-Fi
    instagram  451.0.0.53.80
    playback   play all · 2x on · max 300 s per video
@@ -230,7 +230,8 @@ and gets fewer antivirus false alarms.
   v0.5.1 (the zip's folder renamed from `feed_autoplay` to `android-instagram-tools`; fixes:
   scrolling to Blocked (`UiObjectNotFoundError` in 0.5.0), unblocking through the list), v0.6.0
   (comments, `--comment-text`, 4.7e), v0.7.0 (`--comment-script` + `comment_greeting.bat`, 4.7e), v0.8.0 (phone battery,
-  `--battery-stop`, 4.15), v0.9.0 (shorter time between videos, 4.16). The release pages of v0.2.0–v0.2.2 were deleted
+  `--battery-stop`, 4.15), v0.9.0 (shorter time between videos, 4.16), v0.9.1 (likes confirmed by count and icon — a
+  second tap had been removing them; like refusals counted and paused, 4.7). The release pages of v0.2.0–v0.2.2 were deleted
   on 2026-10-22 (superseded; nobody depended on them) and the one of v0.5.0 on 2026-10-23
   (superseded by v0.5.1 the same day: its scrolling bug); their **tags are kept** as the record
   of each version. To rebuild an old zip: Actions → windows-release → Run workflow → pick the
@@ -305,7 +306,7 @@ android-instagram-tools/
 ├── packaging/                    the Windows app: spec, build.py, files for the zip (1)
 ├── .github/workflows/            windows-release.yml: builds and publishes the zip on v* tags
 ├── examples/                     comment_greeting.py: a --comment-script (4.7e)
-├── tests/                        checks without a phone (test_ui_text.py 4.12, test_pause_stats.py 4.10, 4.11, test_brightness.py 4.13, test_comment.py 4.7e, test_profile_blocker.py 4.14, test_battery.py 4.15, test_navigation.py 4.16)
+├── tests/                        checks without a phone (test_ui_text.py 4.12, test_pause_stats.py 4.10, 4.11, test_brightness.py 4.13, test_comment.py 4.7e, test_profile_blocker.py 4.14, test_battery.py 4.15, test_navigation.py 4.16, test_like.py 4.7)
 └── Dockerfile, compose.yaml, README.md, DEVELOPMENT.md, CONTAINER.md
 ```
 
@@ -647,8 +648,19 @@ username).
   the tap removed it → tap again to restore, log `⚠ like had been on … restored it`. Only
   works with exact counts ("18.5K" → unknown). Tested offline with a simulated button whose
   signals all lie; never triggered live.
-- **After the tap:** the flag/label is polled for up to 3 s (`wait_liked`; the UI can lag). If it
-  still isn't liked: count safety net first; otherwise **one more tap** — it ends liked both
+- **After the tap** (`wait_liked`, up to 3 s, the UI can lag): liked when the flag/label says so
+  or — in the player — the **exact count is one higher** or the **heart is drawn liked twice in
+  a row** (~0.5 s apart). ⚠ *Bug fixed (0.9.1, 2026-10-30):* Instagram stopped flipping the
+  player's `selected` flag (451, pt-BR: label "Curtir" and `selected=false` stay after a
+  like, while the count goes +1 and the heart turns red). Checking only the flag, every like
+  looked "not registered" → the **second tap removed it** → runs logged plenty of "♡ like did
+  not register" and the counter didn't grow. Measured: count 19452 → 19453 1 s after the tap,
+  flag unchanged for 8 s. After the fix, 2 + 9 likes live, each still there 5 s later.
+  **Refusal:** Instagram's refusal text (the shared `REFUSED` texts) in a snackbar or dialog
+  (`resourceIdMatches` snackbar_message / dialog — never captions or comments) → the dialog is
+  closed, `liked … (refused N)` in the stats, likes paused 30 min, doubling to 4 h (as reposts
+  and comments). Not seen live yet. If nothing shows the like after 3 s: count safety net first;
+  otherwise **one more tap** — it ends liked both
   when the first tap was lost and when the post had been liked and the first tap removed it
   (with an abbreviated count the net can't tell). Logs `♥ liked`, `♥ liked (second tap)` or
   `like did not register`. *Why:* a live run logged 2 × "like did not register" (with the old
@@ -1034,7 +1046,7 @@ Logged every 20 played videos, on quit and on key **s** (`Player.report`):
    videos   played 304 · skipped 0 · suggested not played 0
    pace     ~62 videos/h at the current pace (likely 46–77)
             whole run 28.4/h (60.0/h active)
-   actions  liked 302 · commented 0 (refused 0) · reposted 0 (refused 0) · links copied 0 · saved 0
+   actions  liked 302 (refused 0) · commented 0 (refused 0) · reposted 0 (refused 0) · links copied 0 · saved 0
    ends     log 231 · frames 67 · static 1 · max-time 3
    waits    errors recovered 17 · locked 5h 14m · reconnecting 24m · paused 0m
    battery  64% · discharging · 31 °C
@@ -1483,7 +1495,8 @@ brightness keys and restore on a simulated phone (4.13); `uv run tests/test_comm
 comment record and options (4.7e); `uv run tests/test_profile_blocker.py`
 checks profile_blocker's list parsing, results file and screen checks (4.14); `uv run
 tests/test_battery.py` the battery warnings and stop on a simulated phone and clock (4.15);
-`uv run tests/test_navigation.py` the time-saving navigation logic (4.16).
+`uv run tests/test_navigation.py` the time-saving navigation logic (4.16); `uv run
+tests/test_like.py` how a like is confirmed, the second tap and refusals (4.7).
 
 **Live runs.** Run the script for a few minutes with `timeout -s INT 300 … < /dev/null > log`
 and read the log. To test keys without a person at the keyboard, feed them through a

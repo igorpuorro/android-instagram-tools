@@ -42,7 +42,7 @@ import time
 import traceback
 from pathlib import Path
 
-__version__ = "0.9.0"  # same as pyproject.toml; the Windows release tag is v<version>
+__version__ = "0.9.1"  # same as pyproject.toml; the Windows release tag is v<version>
 
 WINDOWS = os.name == "nt"
 # Running as the Windows app built by PyInstaller (packaging/, DEVELOPMENT.md 1): the bundled
@@ -619,8 +619,10 @@ class Player:
         self.repost_backoff = REPOST_BACKOFF_MIN
         self.comment_paused_until = 0.0  # set when Instagram refuses a comment
         self.comment_backoff = REPOST_BACKOFF_MIN
+        self.like_paused_until = 0.0  # set when Instagram refuses a like
+        self.like_backoff = REPOST_BACKOFF_MIN
         self.commented = None  # post identities from runs/commented.txt (loaded when first needed)
-        self.stats = dict(played=0, liked=0, reposted=0, repost_refused=0, commented=0, comment_refused=0, saved=0, links=0, skipped=0, suggested_skipped=0,
+        self.stats = dict(played=0, liked=0, like_refused=0, reposted=0, repost_refused=0, commented=0, comment_refused=0, saved=0, links=0, skipped=0, suggested_skipped=0,
                           end_log=0, end_frames=0, end_static=0, end_max=0, errors=0)
         self.started = time.time()
         self.waited = dict(locked=0.0, reconnect=0.0, paused=0.0)  # idle, excluded from "active" rate
@@ -703,7 +705,7 @@ class Player:
             f"suggested not played {s['suggested_skipped']}")
         log(f"   pace     {pace}")
         log(f"            {whole}")
-        log(f"   actions  liked {s['liked']} · commented {s['commented']} (refused {s['comment_refused']}) · "
+        log(f"   actions  liked {s['liked']} (refused {s['like_refused']}) · commented {s['commented']} (refused {s['comment_refused']}) · "
             f"reposted {s['reposted']} (refused {s['repost_refused']}) · "
             f"links copied {s['links']} · saved {s['saved']}")
         log(f"   ends     log {s['end_log']} · frames {s['end_frames']} · static {s['end_static']} · "
@@ -1372,18 +1374,28 @@ class Player:
         time.sleep(1)  # only the icon says "liked": look once more before believing it
         return self.heart_looks_liked(info["bounds"])
 
+    # a refusal shows in a snackbar or a dialog -- never matched in captions or comments
+    REFUSAL_NODE = dict(resourceIdMatches=r".*(snackbar_message|dialog).*", textMatches=REFUSED)
+
     def tap_like(self, like, count_kind=None):
         """Tap a like button unless already liked; report the outcome. A like button is a
-        toggle: tapping a liked post would remove the like, so check first. With
-        count_pattern, the like count is compared before/after as a safety net."""
+        toggle: tapping a liked post would remove the like, so check first. With count_kind
+        (the full-screen player) the like count and the heart icon also confirm the like --
+        Instagram stopped flipping the button's `selected` flag there (seen 2026-10-30, 451,
+        pt-BR), and a second tap on a like that had gone through removed it again."""
         if self.is_liked(like, check_icon=count_kind is not None):
             log("  ♥ already liked")
             return
         before = self.exact_count(count_kind, before=True) if count_kind else None
         like.click()
-        if self.wait_liked(like):
+        state = self.wait_liked(like, count_kind, before)
+        if state == "liked":
             log("  ♥ liked")
             self.stats["liked"] += 1
+            self.like_backoff = REPOST_BACKOFF_MIN
+            return
+        if state == "refused":
+            self.like_refused()
             return
         after = self.exact_count(count_kind) if count_kind else None
         if before is not None and after is not None and after < before:
@@ -1392,26 +1404,55 @@ class Player:
             like.click()
             log(f"  ⚠ like had been on (count {before} -> {after}); restored it")
             return
-        # Still not liked after 3 s: either the tap was lost, or (with an abbreviated count
-        # the safety net can't read) the post had been liked and the tap removed it. One more
-        # tap ends liked in both cases.
+        # Nothing shows the like after 3 s (no flag, no higher count, a plain heart): the tap
+        # was lost -- or, with an abbreviated count, the post had been liked and the tap
+        # removed it. One more tap ends liked in both cases.
         like.click()
-        if self.wait_liked(like):
+        state = self.wait_liked(like, count_kind, after)
+        if state == "liked":
             log("  ♥ liked (second tap)")
             self.stats["liked"] += 1
+        elif state == "refused":
+            self.like_refused()
         else:
             log("  ♡ like did not register")
 
-    def wait_liked(self, like, timeout=3.0):
-        """Poll the like button's flag/label until it shows liked (the UI can lag the tap)."""
+    def wait_liked(self, like, count_kind=None, before=None, timeout=3.0):
+        """After a tap: "liked", "refused" or None (nothing within `timeout`). Liked when any
+        sign says so: the button's flag/label, or -- in the full-screen player (count_kind) --
+        the exact count one higher than `before`, or the heart drawn liked twice in a row.
+        Refused: Instagram's refusal in a snackbar or dialog (the dialog is closed)."""
         end = time.time() + timeout
+        icon_liked, n = 0, 0
         while True:
             time.sleep(0.25)
+            n += 1
+            if self.d(**self.REFUSAL_NODE).exists:
+                if self.d(resourceIdMatches=r".*dialog.*", textMatches=REFUSED).exists:
+                    self.d.press("back")  # close the dialog, stay in the player
+                    time.sleep(0.8)
+                return "refused"
             info = like.info
             if info.get("selected") or info.get("contentDescription") not in UI_TEXT["like_unliked"]:
-                return True
+                return "liked"
+            if count_kind and n % 2 == 0:  # the slower checks every other turn (~0.5 s)
+                after = self.exact_count(count_kind)
+                if before is not None and after is not None and after > before:
+                    return "liked"
+                icon_liked = icon_liked + 1 if self.heart_looks_liked(info["bounds"]) else 0
+                if icon_liked >= 2:
+                    return "liked"
             if time.time() > end:
-                return False
+                return None
+
+    def like_refused(self):
+        """Instagram refused a like (a limit): pause liking, doubling the pause on repeated
+        refusals -- as for reposts and comments."""
+        self.stats["like_refused"] += 1
+        minutes = self.like_backoff
+        self.like_paused_until = time.time() + minutes * 60
+        self.like_backoff = min(self.like_backoff * 2, REPOST_BACKOFF_MAX)
+        log(f"  ⚠ Instagram refused the like (probably a limit): pausing likes for {minutes} min")
 
     def like_in_player(self):
         like = self.d(resourceId=RID + "like_button")
@@ -1502,8 +1543,13 @@ class Player:
             log(f"recovery failed ({type(e).__name__}: {str(e)[:100]}); will retry")
 
     def should_like(self, followed):
-        """--like none | followed | all; only asked for videos watched to the end."""
+        """--like none | followed | all; only asked for videos watched to the end.
+        Paused for a while after Instagram refuses a like (like reposts and comments)."""
         if self.args.like == "all" or (self.args.like == "followed" and followed):
+            if time.time() < self.like_paused_until:
+                log(f"  ♡ not liked: paused after Instagram refused one "
+                    f"(until {time.strftime('%H:%M', time.localtime(self.like_paused_until))})")
+                return False
             return True
         if self.args.like == "followed":
             log("  ♡ not liked: you don't follow this account")

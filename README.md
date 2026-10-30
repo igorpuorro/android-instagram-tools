@@ -356,6 +356,8 @@ of videos that hit the time limit (`maxwatch-*.npz`).
   same as a batch file next to the exe: `--comment-script comment_greeting.bat`. In the
   container, put the script in `runs/` (e.g. `--comment-script runs/greet.py`): `examples/`
   isn't in the image.
+- **Refused likes:** if Instagram refuses a like, the tool counts it (`liked N (refused M)` in
+  the statistics) and pauses liking for 30 min (longer if it repeats).
 - **Instagram limits reposts.** After many reposts it answers "Unable to repost"; the tool
   notices, doesn't count it, and pauses reposting (30 min, longer if it repeats).
   `--repost followed` is much gentler than `all`.
