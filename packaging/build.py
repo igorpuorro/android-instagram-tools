@@ -26,7 +26,8 @@ ROOT = Path(__file__).resolve().parent.parent
 BUILD = ROOT / "build"
 WINDOWS = os.name == "nt"
 PLATFORM = "windows" if WINDOWS else "linux"
-# files next to the exes (Windows only: connect.bat, disconnect.bat, unblock.bat, README.txt);
+# files next to the exes (Windows only: connect.bat, disconnect.bat, unblock.bat,
+# comment_greeting.bat, README.txt);
 # settings.txt and profiles.txt are bundled instead: the apps create them on first start, so
 # updates keep the user's own
 CREATED = ("settings.txt", "profiles.txt")

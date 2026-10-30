@@ -48,8 +48,8 @@ after another, so the phone (mirrored with scrcpy on a second display) is always
 something:
 
 find a video post in the feed → tap it (full-screen player, with sound) → optionally lock
-**2x** speed (`--2x`) → watch until the video **ends** → optionally **like**, **repost**, **copy
-its link** and/or **save** it (in that order — the buttons' order on screen) → Back → scroll on
+**2x** speed (`--2x`) → watch until the video **ends** → optionally **like**, **comment**,
+**repost**, **copy its link** and/or **save** it (in that order — the buttons' order on screen) → Back → scroll on
 → repeat.
 
 ```bash
@@ -88,7 +88,7 @@ Keys while running (only when started from a terminal):
 
 | Key | Action |
 |---|---|
-| **n** | next video (skipped videos are never liked, reposted, link-copied or saved) |
+| **n** | next video (skipped videos are never liked, commented, reposted, link-copied or saved) |
 | **p** | pause: hand the phone over (the tool stops touching it) / resume (4.10) |
 | **x** | 2x speed on / off, from the next video (4.4, 4.10) |
 | **<** / **>** | phone screen dimmer / brighter (4.13) |
@@ -103,14 +103,15 @@ Keys while running (only when started from a terminal):
 | **h**, **?** | show the keys, grouped, with each mode's cycle and the current one in brackets |
 | **q** | quit |
 
-At startup the app prints a block with the phone, the Instagram version and the settings:
+At startup the app prints a block with the phone, the Instagram version, the settings and the
+phone's battery:
 
 ```
 ── feed_autoplay 0.8.0 ─────────────────────────────────────────
    phone      Samsung SM-A515F · Android 11 · serial R58N91XKQZT · Wi-Fi
    instagram  451.0.0.53.80
    playback   play all · 2x on · max 300 s per video
-   actions    like all · repost followed · copy link none · save none
+   actions    like all · comment none · repost followed · copy link none · save none
    battery    64% · discharging · 31 °C · stops at 10% unless charging
    end        Instagram's log + frame comparison
    keys       press h for help
@@ -118,7 +119,8 @@ At startup the app prints a block with the phone, the Instagram version and the 
 ```
 
 The header shows the version (`__version__`). With the Windows app started without options a
-`settings   from settings.txt` line follows `actions`. `phone` comes from `getprop` (the hardware serial, not adb's Wi-Fi connection name), `Wi-Fi`/`USB`
+`settings   from settings.txt` line follows `actions` (after the optional `comment` and
+`screen` lines). `phone` comes from `getprop` (the hardware serial, not adb's Wi-Fi connection name), `Wi-Fi`/`USB`
 from the adb serial's form. On an Instagram version not in `TESTED_INSTAGRAM` the `instagram`
 line adds "⚠ untested version" — selectors, texts and icon masks (4.7) may need re-checking.
 `keys` says "off" when stdin isn't a terminal (background runs) and then names the stop and
@@ -226,7 +228,8 @@ and gets fewer antivirus false alarms.
   blocked accounts list, ~2× faster; 4.14; zip and release named android-instagram-tools),
   v0.5.1 (the zip's folder renamed from `feed_autoplay` to `android-instagram-tools`; fixes:
   scrolling to Blocked (`UiObjectNotFoundError` in 0.5.0), unblocking through the list), v0.6.0
-  (comments, `--comment-text`, 4.7e), v0.7.0 (`--comment-script` + `comment_greeting.bat`, 4.7e). The release pages of v0.2.0–v0.2.2 were deleted
+  (comments, `--comment-text`, 4.7e), v0.7.0 (`--comment-script` + `comment_greeting.bat`, 4.7e), v0.8.0 (phone battery,
+  `--battery-stop`, 4.15). The release pages of v0.2.0–v0.2.2 were deleted
   on 2026-10-22 (superseded; nobody depended on them) and the one of v0.5.0 on 2026-10-23
   (superseded by v0.5.1 the same day: its scrolling bug); their **tags are kept** as the record
   of each version. To rebuild an old zip: Actions → windows-release → Run workflow → pick the
@@ -257,7 +260,8 @@ named volume `adb-keys` for the pairing key, default `command:` for `up -d`), `.
   the container (tested outside, same code).
 
 Instagram's terms forbid automated access. Playing and liking at human pace is low-key, but
-keep it in mind before adding anything that interacts at volume (follows, comments, ...).
+keep it in mind before adding anything that interacts at volume (follows, ...); comments are
+opt-in and once per post (4.7e).
 
 ## 2. Test environment
 
@@ -270,6 +274,7 @@ Everything below was measured on this setup; coordinates and IDs may differ else
 | PC | Ubuntu; Python 3.10 (development, pip venv) → Python 3.13 via uv (since 2026-10-21); uiautomator2 3.7.0, adbutils 2.12.0, numpy 2.2.6, Pillow 12.3.0 |
 | Connection | USB at first, later Wi-Fi debugging |
 | Windows | the owner's Windows 11 PC: native uv route (`run.bat`, 4.10 keys, `stop.bat`; USB with the vendor driver and Wi-Fi) and the Windows app zip (v0.2.0: exe, `Connect phone.bat`, `pause.bat`, `stop.bat` — the last two removed in 0.2.2; USB with the vendor driver and Wi-Fi) — run by the owner, results reported back |
+| Second phone | profile_blocker (4.14): a Samsung Galaxy, Android 16, 1080×2400, Instagram 452.1.0.54.64 |
 | Phone settings | pattern screen lock; Developer options → **Stay awake** on (since 2026-10-18, after 5.1) |
 
 Useful screen landmarks (1080×2340): status bar ends ~83 px; Instagram tab bar starts at
@@ -285,15 +290,16 @@ environment variables use `FEED_AUTOPLAY_…`. Future tools follow the same obje
 pattern (e.g. `story_viewer`). History: `insta_autoplay` → `instagram_autoplay` → `feed_autoplay`
 (old run logs in `runs/` still show the old names).
 
-**Planned layout once a second tool exists** (not before — the shared interface should be
-shaped by two real users): code any Instagram tool needs (phone connection and `pick_serial`,
+**Planned layout, now that a second tool exists** (profile_blocker, 4.14 — still to do; the
+shared interface is shaped by these two real users): code any Instagram tool needs (phone connection and `pick_serial`,
 lock-screen wait, error recovery, `EndWatcher`, `Keys`, the stats block, icon masks, follow
 detection) moves into a shared package, each tool into its own subpackage:
 
 ```
 android-instagram-tools/
 ├── android_instagram/            shared (device, logwatch, keys, stats, ui, …)
-│   └── feed_autoplay/            this tool → python -m android_instagram.feed_autoplay
+│   ├── feed_autoplay/            → python -m android_instagram.feed_autoplay
+│   └── profile_blocker/          → python -m android_instagram.profile_blocker
 ├── tools/                        dev tools, per tool
 ├── packaging/                    the Windows app: spec, build.py, files for the zip (1)
 ├── .github/workflows/            windows-release.yml: builds and publishes the zip on v* tags
@@ -302,7 +308,8 @@ android-instagram-tools/
 └── Dockerfile, compose.yaml, README.md, DEVELOPMENT.md, CONTAINER.md
 ```
 
-Until then everything lives in `feed_autoplay.py`:
+Until then `feed_autoplay.py` holds everything shared and `profile_blocker.py` imports it
+(4.14):
 
 
 | Piece | Role |
@@ -313,11 +320,11 @@ Until then everything lives in `feed_autoplay.py`:
 | `Battery` / `read_battery` / `Player.check_battery` | the phone's battery: warnings, the clean stop, charger events, heat (4.15) |
 | `Brightness` | the phone's screen brightness: keys < >, `--brightness`, saved and restored (4.13) |
 | `Player.pause` / `Resumed` | the hand-the-phone-over pause (4.10); `Resumed` sends the run back to the Home feed |
-| `Player.poll` / `Player.key` | poll: the stop file and the global keys (q, x, w, l, r, c, b, s, h/?); key: adds the pause (p / `runs/PAUSE`) and returns only n to the caller |
+| `Player.poll` / `Player.key` | poll: the stop file and the global keys (q, x, w, l, m, r, c, b, < > a, s, h/?); key: adds the pause (p / `runs/PAUSE`) and returns only n to the caller |
 | `COMMANDS`: `connect_wizard`, `disconnect`, `run_adb`, `self_check` | the helper commands connect / disconnect / adb / check (1) |
 | `entry` / `settings_args` / `owns_console` | start: a helper command or the app; `settings.txt` for the Windows app; its own window waits for Enter at the end (1) |
 | `FROZEN`, `BUNDLE_DIR`, `APP_DIR`, `RUNS` | where files are, as a script or as the Windows app (1) |
-| `MODE_KEYS` / `cycle_text` | the five mode keys in one table (attribute, label, cycle, note); `followed → [all]`-style cycle text |
+| `MODE_KEYS` / `cycle_text` | the six mode keys in one table (attribute, label, cycle, note); `followed → [all]`-style cycle text |
 | `PLAY_MODES` … `SAVE_MODES` | the mode lists — the single definition of each setting's values and their order (also used as `--help` choices) |
 | `Player.help` | the in-app help block (key **h** / **?**), current modes inline |
 | `startup_report` | the startup block: phone, Instagram version (warns if not in `TESTED_INSTAGRAM`), settings |
@@ -333,7 +340,9 @@ Until then everything lives in `feed_autoplay.py`:
 | `Player.repost_state` / `repost_in_player` | reposted / not reposted / unclear from the icon's shape; tap only when clearly not reposted |
 | `Player.repost_confirmed` / `repost_refused` | catch Instagram's delayed "Unable to repost"; pause reposting with back-off |
 | `Player.icon_white` + `assets/icon_masks.npz` | white-pixel map of a player icon, compared against recorded icon shapes |
-| `Player.should_like` / `should_repost` / `should_share` / `should_save` | apply `--like` / `--repost` / `--share-link` / `--save` (none / followed / all) |
+| `Player.should_like` / `should_comment` / `should_repost` / `should_share` / `should_save` | apply `--like` / `--comment` / `--repost` / `--share-link` / `--save` (none / followed / all); `comment_refused` / `repost_refused` pause them after a refusal |
+| `script_command` / `run_comment_script` / `comment_script_check` | `--comment-script`: how a script is run, what it gets, the trial at start (4.7e) |
+| `percent` / `battery_percent` / `bell` | argparse types for `--brightness` / `--battery-stop`; the terminal bell (4.15) |
 | `Player.comment_in_player` / `close_comment_sheet` / `already_commented` / `record_comment` | the comment action (4.7e); `COMMENTED` = `runs/commented.txt` |
 | `Player.copy_link_in_player` / `close_share_sheet` | Share → "Copy link", read the link from the phone's clipboard, log it to `runs/shared-links.txt` |
 | `Player.save_in_player` | save only when not saved; close the collections sheet; count-drop safety net |
@@ -917,10 +926,10 @@ at a time and never had this. `Player.poll()` also checks the stop file `runs/ST
 removed and the run ends like `q` (works without a terminal, on every system); `Player.key()`
 adds the pause (key p or `runs/PAUSE`, below). `Player.key()` is polled both while scanning the
 feed and while watching; it calls `Player.poll()`, which handles the global keys (q raises
-`Quit`; w / l / r / c / b cycle `args.play` / `args.like` /
+`Quit`; w / l / m / r / c / b cycle `args.play` / `args.like` / `args.comment` /
 `args.repost` / `args.share_link` / `args.save` in place (one table, `MODE_KEYS`) and log the
 new mode with its cycle, e.g. `like mode: all   (none → followed → [all])`; x toggles
-`args.speed2x` (2x on/off, `SPEED_MODES`); s prints the stats;
+`args.speed2x` (2x on/off, `SPEED_MODES`); < > a go to `Brightness` (4.13); s prints the stats;
 h/? prints the help block); `key()` itself handles the pause (p) and returns only n to the
 caller.
 
@@ -929,17 +938,17 @@ with the current mode marked inside each key's cycle:
 
 ```
 ── keys ────────────────────────────────────────────────────────
-   playback   n  next video (a skipped video gets no like/repost/link/save)
+   playback   n  next video (a skipped video gets no like/comment/repost/link/save)
               p  pause: the phone is yours until p again (also runs/PAUSE)
               x  2x speed         off → [on]                from the next video
               w  play mode        followed → [all]
               <  >  brightness    dimmer / brighter         now 30%
               a  brightness       the phone's own again     (adaptive if it was)
    actions    l  like mode        none → followed → [all]
-   (screen    m  comment mode     none → [followed] → all  public, under your name
-    order)    r  repost mode      none → [followed] → all  shows on your profile
-              c  copy link mode   [none] → followed → all  → runs/shared-links.txt
-              b  save mode        [none] → followed → all  private to you
+   (screen    m  comment mode     none → [followed] → all   public, under your name
+    order)    r  repost mode      none → [followed] → all   shows on your profile
+              c  copy link mode   [none] → followed → all   → runs/shared-links.txt
+              b  save mode        [none] → followed → all   private to you
    info       s  statistics so far
               h  this help (also ?)
               q  quit
@@ -952,7 +961,7 @@ right, and no extra hold-and-slide is needed mid-video. Turning it off needs no 
 Instagram resets the lock for every video (4.4). Tested live 2026-10-21 (pseudo-terminal, `--2x`,
 x pressed during video 1 → video 2 at 1x, x again → videos 3–4 locked 2x).
 
-Mode changes apply immediately: the like, repost, copy-link and save decisions are made when
+Mode changes apply immediately: the like, comment, repost, copy-link and save decisions are made when
 a video ends, so a new mode applies to the video currently playing; switching play to "followed" while a suggested
 video plays skips it at once (`watch(..., followed=...)`). Play has two modes only — a "none"
 play mode would mean playing nothing. When stdin isn't a TTY (pipes, background runs, tests) keys are simply disabled —
@@ -1303,7 +1312,7 @@ suggestions as the search runs), `list_rows`, `on_blocked_list`, `block_question
 **Safety.** The search screen is full of Block buttons for other accounts (suggestions, similar
 names), so:
 - a button is only tapped inside the row whose **username** equals the name exactly — never
-  the full name: searching `nytimes` also returned `nytimes79`, whose full name is "nytimes";
+  the full name: searching `nytimes` also returned a look-alike account (here `nytimes_fan79`), whose full name is "nytimes";
 - the confirmation must ask about exactly that name (`block_question` / `unblock_question`),
   or nothing is confirmed — this also catches a tap that landed on a moved row;
 - the sheet's / dialog's button is tapped by its ID: the rows behind, still in the UI tree,
@@ -1565,7 +1574,7 @@ repost"** message, and every repost tap was refused → repost refusal detection
 - Collab posts count as followed (see 4.6).
 - Instagram rate-limits reposts (4.7b); `--repost all` on a long run hits it. Likes may have a
   limit too — no refusal message for likes has been seen so far.
-- All IDs/texts were found on Instagram 450/451 in English (UK and US) and Brazilian Portuguese (4.12); an
+- All IDs/texts were found on Instagram 450/451 (profile_blocker: 452) in English (UK and US) and Brazilian Portuguese (4.12); an
   update or another app language can break them — add the texts to `UI_TEXT`. pt-BR ads, collab
   lines and the feed's liked label weren't seen yet.
 - Idea: the player's `scrubber` element (pt-BR "Barra de pesquisa", seen on 451) may expose the
@@ -1653,9 +1662,9 @@ Commits follow [Conventional Commits 1.0](https://www.conventionalcommits.org/en
 | `chore` | maintenance (`.gitignore`, renames, cleanup) | `chore: keep recorded feed data out of the repository` |
 | `revert` | reverting a commit | `revert: feat(feed_autoplay): …` |
 
-**Scopes** follow the project layout (3): a tool's name — `feed_autoplay` (later e.g.
-`story_viewer`) —, `android_instagram` for the shared package once it exists, `container`
-(Dockerfile, compose, entrypoint), `tools` (dev tools under `tools/`). Leave the scope out for
+**Scopes** follow the project layout (3): a tool's name — `feed_autoplay`, `profile_blocker` —,
+`android_instagram` for the shared package once it exists, `container` (Dockerfile, compose,
+entrypoint), `windows` (the Windows app build), `tools` (dev tools under `tools/`). Leave the scope out for
 project-wide changes (`docs: …`, `chore: …`).
 
 **Rules**

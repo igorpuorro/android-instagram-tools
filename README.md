@@ -35,7 +35,7 @@ flowchart TD
 | **Start** | `uv run feed_autoplay.py` | double-click `run.bat` | `docker compose run --rm app` | double-click `feed_autoplay.exe` |
 | **Options** | on the command line | on the command line | `compose.yaml` / command line | `settings.txt` (Notepad) |
 | **Best for** | everyday use on Linux/macOS | Windows, following the code (`git pull`) | no Python on the computer; same setup everywhere | Windows, the simplest |
-| **Status** | tested on Linux; macOS expected to work | tested on Windows 11, USB and Wi-Fi | tested on Linux; not yet tried on Windows | tested on Windows 11, USB and Wi-Fi |
+| **Status** | tested on Linux; macOS expected to work | tested on Windows 11, USB and Wi-Fi | tested on Linux; not yet tried on Windows | tested on Windows 11, USB and Wi-Fi (profile_blocker: not yet) |
 
 *USB is the more stable connection for long runs.* Some phone brands need an extra setting
 first — see [Phone-specific settings](#phone-specific-settings). Whichever you choose, the tool, its options and
@@ -274,7 +274,7 @@ was called `feed_autoplay`, now `android-instagram-tools` — copy your `setting
 
 Plays the videos of your **Instagram home timeline**, one after another, without you touching the
 phone — so a mirrored phone (e.g. scrcpy on a second screen) is always playing something.
-Optionally at **2x**, and it can **like**, **repost**, **copy the link of** and/or **save** each
+Optionally at **2x**, and it can **like**, **comment on**, **repost**, **copy the link of** and/or **save** each
 video it watched to the end. The same options and keys apply in A, B, C and D.
 
 ### Options
@@ -328,7 +328,7 @@ and continues from the Home feed. Paused time doesn't count in the statistics' p
 
 ### What it shows
 
-At start: the phone, the Instagram version and the settings. While running: one line per video
+At start: the phone, the Instagram version, the settings and the phone's battery. While running: one line per video
 and action (`▶` opened, `⏩` 2x, `♥` liked, `💬` commented, `🔁` reposted, `🔗` link, `🔖` saved). Every 20
 videos (and on **s** / when stopping) a statistics block, including the **pace** — how many
 videos an hour to expect. Files go to `runs/`: copied links (`shared-links.txt`), commented posts (`commented.txt`) and diagnostics
@@ -351,7 +351,9 @@ of videos that hit the time limit (`maxwatch-*.npz`).
   start. Printing nothing skips the video; a failing script stops the start. Example, a greeting
   for the time of day: [`examples/comment_greeting.py`](examples/comment_greeting.py):
   `--comment followed --comment-script examples/comment_greeting.py`. The Windows app has the
-  same as a batch file next to the exe: `--comment-script comment_greeting.bat`
+  same as a batch file next to the exe: `--comment-script comment_greeting.bat`. In the
+  container, put the script in `runs/` (e.g. `--comment-script runs/greet.py`): `examples/`
+  isn't in the image.
 - **Instagram limits reposts.** After many reposts it answers "Unable to repost"; the tool
   notices, doesn't count it, and pauses reposting (30 min, longer if it repeats).
   `--repost followed` is much gentler than `all`.

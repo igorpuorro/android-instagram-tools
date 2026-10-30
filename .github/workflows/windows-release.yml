@@ -25,7 +25,8 @@ jobs:
       - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e  # v10.3.2
 
       # the exact package versions of uv.lock (--frozen), Python 3.13 like the tested setup;
-      # build.py also self-checks the app (check, --help, adb version) and the bundle contents
+      # build.py also self-checks the app (check, --help, adb version, profile_blocker --help)
+      # and the bundle contents
       - name: Build and check the app
         run: uv run --frozen --python 3.13 --group build packaging/build.py
 

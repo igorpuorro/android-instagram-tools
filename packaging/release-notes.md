@@ -3,7 +3,9 @@ nothing to install (no Python, no uv, no git):
 - **`feed_autoplay.exe`** plays the videos of your home timeline one after another, optionally
   at 2x, liking / commenting / reposting / copying links / saving them. *0.7.0:* the comment
   can come from a script, a different one per video — `--comment-script comment_greeting.bat`
-  (in the folder: a greeting for the time of day; edit its texts with Notepad);
+  (in the folder: a greeting for the time of day; edit its texts with Notepad). *0.8.0:* it
+  watches the phone's battery — warns, and stops cleanly at 10 % when not charging
+  (`--battery-stop`);
 - **`profile_blocker.exe`** *(0.5.0: about twice as fast)* blocks every profile in a list (`profiles.txt`,
   created on its first start), through your blocked accounts list (Bloqueados → +);
   **`unblock.bat`** unblocks them again (0.5.1: also through the list). Instagram in English

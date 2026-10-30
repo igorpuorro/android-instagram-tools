@@ -73,8 +73,8 @@ first start sets play all, 2x, and like, repost, copy link and save all)
   --comment-script FILE          or a script that prints the comment, run for each video:
                                  .bat/.cmd, .ps1, or .py (needs Python from python.org).
                                  It gets IG_AUTHOR (the account), IG_POST (the post's
-                                 header) and IG_FOLLOWED (1/0); printing nothing skips the
-                                 video. A name without a folder is looked up next to the exe.
+                                 header), IG_FOLLOWED (1/0), and IG_TEST=1 on the trial run
+                                 at start; printing nothing skips the video. A name without a folder is looked up next to the exe.
                                  Example: comment_greeting.bat (a greeting for the time of
                                  day; edit its texts with Notepad, keep it saved as UTF-8).
   --repost none|followed|all     repost them (default none; shown on your profile)

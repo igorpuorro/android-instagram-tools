@@ -13,8 +13,9 @@ debugging** — a container can't use the phone's USB connection on Windows.
 > end-of-video detection, local time zone, keys on/off, stop with final statistics, and
 > coexisting with the computer's own adb connection. Side by side with running directly on the
 > computer it performed the same (~55 videos/h, end detection on par).
-> **Not tried yet:** Windows itself, Podman, the one-time `pair`, and likes / reposts / copied
-> links / saves from inside the container (same code as outside, which is tested).
+> **Not tried yet:** Windows itself, Podman, the one-time `pair`, and likes / comments /
+> reposts / copied links / saves, brightness and the battery watch from inside the container
+> (same code as outside, which is tested).
 
 **Which tool runs:** the compose service `app` runs **feed_autoplay**; its options go after `app`
 (`docker compose run --rm app --play all --2x`). **profile_blocker** runs with `block` and the
@@ -57,8 +58,9 @@ docker compose logs --no-log-prefix app > runs\run-<date>.log    # keep the outp
 - **Pause** a background run to use the phone: create an empty file `PAUSE` in the `runs\`
   folder (`ni runs\PAUSE` in PowerShell, `touch runs/PAUSE` elsewhere); delete it to resume.
 - **Output** stays in Docker's log until the container is removed — save it as above. The
-  `runs\` folder next to `compose.yaml` gets `shared-links.txt` (copied links) and
-  `maxwatch-*.npz` (diagnostics).
+  `runs\` folder next to `compose.yaml` gets `shared-links.txt` (copied links),
+  `commented.txt` (commented posts) and `maxwatch-*.npz` (diagnostics). A `--comment-script`
+  must be in `runs\` too (e.g. `--comment-script runs/greet.py`): `examples/` isn't in the image.
 
 **Helpers:**
 - `docker compose run --rm app adb devices` — what adb sees.

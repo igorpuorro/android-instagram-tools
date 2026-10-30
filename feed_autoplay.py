@@ -806,7 +806,7 @@ class Player:
 
         On resume nothing is tapped blindly: the video is resumed in place only if the same
         video is still open and paused at the same frame (nobody touched it); otherwise the
-        current video is dropped (no like/repost/link/save) and Resumed is raised, which takes
+        current video is dropped (no like/comment/repost/link/save) and Resumed is raised, which takes
         the run back to the Home feed."""
         t0 = self.pause_start = time.time()
         ref = None
@@ -878,7 +878,7 @@ class Player:
             return f"{line:<45} {note}".rstrip()
 
         log("── keys " + "─" * 56)
-        log(f"   playback   n  next video (a skipped video gets no like/repost/link/save)")
+        log(f"   playback   n  next video (a skipped video gets no like/comment/repost/link/save)")
         log(f"              p  pause: the phone is yours until p again (also runs/PAUSE)")
         speed = "x  2x speed".ljust(20) + cycle_text(SPEED_MODES, "on" if a.speed2x else "off")
         log(f"              {speed:<45} from the next video")
@@ -2201,7 +2201,8 @@ def main():
     c.add_argument("--comment-script", metavar="FILE", default="",
                    help="a script that prints the comment, run for each video (.py, .bat/.cmd, .ps1, "
                         ".sh or an executable); it gets IG_AUTHOR, IG_POST and IG_FOLLOWED (1/0) in "
-                        "its environment; printing nothing skips the video")
+                        "its environment, and IG_TEST=1 on the trial run at start; printing "
+                        "nothing skips the video")
     g.add_argument("--repost", choices=REPOST_MODES, default="none",
                    help="which fully watched videos to repost (shown on your profile): none "
                         "(default) = never; followed = only from accounts you follow; all = every one")

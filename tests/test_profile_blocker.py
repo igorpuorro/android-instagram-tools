@@ -93,7 +93,7 @@ check("no progress", pb.blocking(blocked), False)
 dialog = screen(node("igds_alert_dialog_headline", text="Unblock The New York Times (nytimes)?"),
                 node("igds_alert_dialog_primary_button", text="Unblock"))
 check("unblock question", pb.unblock_question(dialog, "nytimes"), True)
-check("unblock question other name", pb.unblock_question(dialog, "nytimes79"), False)
+check("unblock question other name", pb.unblock_question(dialog, "nytimes_fan79"), False)
 check("unblock question pt-BR", pb.unblock_question(screen(node("igds_alert_dialog_headline",
                                                                  text="Desbloquear chef.marco?")), "chef.marco"), True)
 check("unblock question no dialog", pb.unblock_question(blocked, "chef.marco"), False)
