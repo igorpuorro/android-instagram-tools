@@ -42,7 +42,7 @@ import time
 import traceback
 from pathlib import Path
 
-__version__ = "0.8.0"  # same as pyproject.toml; the Windows release tag is v<version>
+__version__ = "0.9.0"  # same as pyproject.toml; the Windows release tag is v<version>
 
 WINDOWS = os.name == "nt"
 # Running as the Windows app built by PyInstaller (packaging/, DEVELOPMENT.md 1): the bundled
@@ -628,6 +628,8 @@ class Player:
         self.pause_start = None  # start of the pause in progress (stats shown while paused)
         self.context = None  # "player" / "feed-video" while watch() runs: what a pause leaves
         self.need_feed = True  # (re)start from the Home feed on the next loop turn
+        self.feed_checked = 0.0  # last full ensure_feed() (back_to_feed() skips it in between)
+        self.before_xml = None  # one screen read with the counts before a video's actions
         self.cycles = []        # recent active cycle times (s): start of one played video to the next
         self.last_start = None  # (time, idle seconds so far) at the last played video's start
         self.next_report = 20  # print stats every 20 played videos
@@ -920,13 +922,69 @@ class Player:
     def in_feed(self):
         return self.d(resourceId=FEED_LIST).exists and self.d(packageName=PKG, descriptionMatches=HOME_TAB, selected=True).exists
 
+    def scroll_past(self, desc):
+        """After a video: one swipe that moves the post just watched away and brings the next
+        one near the top, where it's tapped without a second "pull up" swipe (a swipe is
+        ~1.6 s on the test phone; DEVELOPMENT.md 4.16). The swipe starts a little below the
+        watched video -- or at 0.85·h, above the tab bar, when the video reaches further down --
+        and ends at 0.10·h. Whatever lay below the video lies below the start, so it moves up
+        less than start - end and lands at >= 0.05·h: a post is never pushed off the top
+        unseen. Without the watched post's position, the fixed scroll as before."""
+        box = self.watched_media_box(desc)
+        end = int(self.h * 0.10)
+        start = min(box[3] + int(self.h * 0.05), int(self.h * 0.85)) if box else 0
+        if box and start - end >= int(self.h * 0.2):
+            self.d.swipe(self.w // 2, start, self.w // 2, end, 0.5)  # slow enough not to fling
+            time.sleep(0.6)
+        else:
+            self.scroll(0.35, settle=0.6)
+
+    def watched_media_box(self, desc):
+        """media_box() for the post just watched -- found like is_seen() does (author part +
+        posting time), not by its exact header: the relative time label moves on while the
+        video plays ("50 minutes ago" -> "51 minutes ago")."""
+        xml = self.d.dump_hierarchy()
+        prefix, posted, tol = self.post_id(desc)
+        for node in self.HEADER_NODE.findall(xml):
+            p, q, t = self.post_id(re.search(r'content-desc="([^"]*)"', node).group(1))
+            if p != prefix or not (posted is None and q is None or posted is not None and q is not None
+                                   and abs(posted - q) <= max(tol, t)):
+                continue
+            h0, h1 = self._y_range(node)
+            for media in re.findall(r'<node [^>]*resource-id="' + re.escape(RID + "media_group") + r'"[^>]*>', xml):
+                y0, y1 = self._y_range(media)
+                # media_group starts at the header's top (the whole post) or right below it
+                if abs(y0 - h0) < 10 or abs(y0 - h1) < 10:
+                    return 0, y0, self.w, y1
+            return None
+        return None
+
     def scroll(self, frac=0.55, settle=1.0):
         y0 = int(self.h * 0.75)
         self.d.swipe(self.w // 2, y0, self.w // 2, int(y0 - self.h * frac), 0.4)
         time.sleep(settle)
 
+    FEED_CHECK_EVERY = 120  # s: full ensure_feed() (screen, lock, app, tab) between videos at most this often
+
+    def back_to_feed(self):
+        """After Back from the player: the feed is normally there at once -- wait for it (up to
+        2 s) instead of a fixed second, and run the full ensure_feed() (screen on, lock, app in
+        front, Home tab: ~1-2 s) only every FEED_CHECK_EVERY s or when the feed doesn't show --
+        a locked phone shows no feed, so the full check (with the unlock wait) runs at once
+        (DEVELOPMENT.md 4.16)."""
+        if time.time() - self.feed_checked < self.FEED_CHECK_EVERY:
+            end = time.time() + 2
+            while True:
+                if self.in_feed():
+                    return
+                if time.time() > end:
+                    break
+                time.sleep(0.2)
+        self.ensure_feed()
+
     def ensure_feed(self):
         """Get back to the Home timeline from wherever we are (popups, other tabs...)."""
+        self.feed_checked = time.time()
         self.wake()
         for _ in range(4):
             if self.d.app_current().get("package") != PKG:
@@ -1048,9 +1106,11 @@ class Player:
             found = self.find_video_header()
             if found:
                 desc, top, bottom, followed = found
-                if top > self.h * 0.35:
+                if top > self.h * 0.45:
                     # pull the post up first: a tap low on the screen lands on the strip at
-                    # the bottom of the video ("Turn sound on"), which doesn't open the player
+                    # the bottom of the video ("Turn sound on"), which doesn't open the player.
+                    # Up to 0.45·h the tap (header bottom + 0.15·h, so <= ~0.65·h) is still
+                    # well inside the video (0.35 until 0.9; DEVELOPMENT.md 4.16)
                     self.d.swipe(self.w // 2, top, self.w // 2, int(self.h * 0.12), 0.5)
                     time.sleep(0.6)
                     found = self.find_video_header()
@@ -1099,18 +1159,25 @@ class Player:
             self.d.touch.down(x, y)
             y_up = y  # where the finger is when released
             try:
-                time.sleep(1.2)
-                xml = self.d.dump_hierarchy()
-                if has_any(xml, "speed_locked"):
-                    log("  ⏩ 2x already locked")
-                    return True
-                if has_any(xml, "speed_unlocked"):
-                    for i in range(1, 11):
-                        y_up = y + i * 40
-                        self.d.touch.move(x, y_up)
-                        time.sleep(0.05)
-                    log("  ⏩ 2x locked")
-                    return True
+                # the hint shows within ~0.5 s of the press: look from then on (up to 1.6 s)
+                # instead of a fixed 1.2 s hold (DEVELOPMENT.md 4.16)
+                held = time.time()
+                time.sleep(0.5)
+                while True:
+                    xml = self.d.dump_hierarchy()
+                    if has_any(xml, "speed_locked"):
+                        log("  ⏩ 2x already locked")
+                        return True
+                    if has_any(xml, "speed_unlocked"):
+                        for i in range(1, 11):
+                            y_up = y + i * 40
+                            self.d.touch.move(x, y_up)
+                            time.sleep(0.05)
+                        log("  ⏩ 2x locked")
+                        return True
+                    if time.time() - held > 1.6:
+                        break
+                    time.sleep(0.15)
             finally:
                 self.d.touch.up(x, y_up)  # always lift the finger, even on errors / quit
             time.sleep(1)  # e.g. first-time "Press edge to fast-forward" tip: try once more
@@ -1254,11 +1321,21 @@ class Player:
         return RID + "inline_follow_button" not in xml and not any(
             f'text="{t}' in xml for t in UI_TEXT["followed_by"])
 
-    def exact_count(self, kind):
+    def exact_count(self, kind, before=False, xml=None):
         """An exact number shown in the player (e.g. "The like number is 304" / "O número de
         curtidas é 304"), or None when missing or abbreviated ("18.5K", "1,2 mil": a change
-        of one isn't visible). kind: "like", "repost" or "save" (COUNTS)."""
-        xml = self.d.dump_hierarchy()
+        of one isn't visible). kind: "like", "repost" or "save" (COUNTS).
+
+        before=True: the count before this video's actions, from one screen read shared by
+        them (taken by the first that needs it; a like doesn't change the save count etc.) --
+        one ~0.5 s read instead of one per action (DEVELOPMENT.md 4.16). Counts after a tap are
+        always read fresh."""
+        if xml is None and before:
+            if self.before_xml is None:
+                self.before_xml = self.d.dump_hierarchy()
+            xml = self.before_xml
+        elif xml is None:
+            xml = self.d.dump_hierarchy()
         for pattern, sep in COUNTS[kind]:
             m = re.search(pattern, xml)
             if m:
@@ -1302,7 +1379,7 @@ class Player:
         if self.is_liked(like, check_icon=count_kind is not None):
             log("  ♥ already liked")
             return
-        before = self.exact_count(count_kind) if count_kind else None
+        before = self.exact_count(count_kind, before=True) if count_kind else None
         like.click()
         if self.wait_liked(like):
             log("  ♥ liked")
@@ -1329,7 +1406,7 @@ class Player:
         """Poll the like button's flag/label until it shows liked (the UI can lag the tap)."""
         end = time.time() + timeout
         while True:
-            time.sleep(0.5)
+            time.sleep(0.25)
             info = like.info
             if info.get("selected") or info.get("contentDescription") not in UI_TEXT["like_unliked"]:
                 return True
@@ -1380,12 +1457,11 @@ class Player:
                         log("  skipping: you don't follow this account")
                         self.stats["suggested_skipped"] += 1
                     self.d.press("back")
-                    time.sleep(1.0)
-                    self.ensure_feed()
+                    self.back_to_feed()
                 else:
                     self.mark_played()
                     self.play_in_feed(desc, followed)
-                self.scroll(0.35, settle=0.6)  # move past the post we just watched
+                self.scroll_past(desc)  # move past the post just watched
                 failures = 0
                 if self.stats["played"] >= self.next_report:
                     self.report()
@@ -1621,7 +1697,7 @@ class Player:
             log("  repost skipped: icon state unclear (busy background)")
             return
         count = "repost"
-        before = self.exact_count(count)
+        before = self.exact_count(count, before=True)
         btn.click()
         if self.d(resourceId=RID + "snackbar_message",
                   textMatches="^(" + "|".join(UI_TEXT["reposted"]) + ")$").wait(timeout=3):
@@ -1672,19 +1748,20 @@ class Player:
             log("  🔖 already saved")
             return
         count = "save"
-        before = self.exact_count(count)
+        before = self.exact_count(count, before=True)
         btn.click()
         saved = False
         end = time.time() + 3
         while time.time() < end:
-            time.sleep(0.5)
+            time.sleep(0.3)
             if self.d(resourceId=RID + "snackbar_message", textMatches=REFUSED).exists:
                 log("  ⚠ Instagram refused the save")
                 break
             if btn.info.get("selected"):
                 saved = True
                 break
-        after = self.exact_count(count)
+        xml = self.d.dump_hierarchy()  # one read for the count and the sheet (DEVELOPMENT.md 4.16)
+        after = self.exact_count(count, xml=xml)
         if before is not None and after is not None and after < before:
             # the flag said "not saved" but the count went down: it was saved and this tap
             # removed it -- put it back
@@ -1695,7 +1772,7 @@ class Player:
                 time.sleep(0.8)
             log(f"  ⚠ save had been on (count {before} -> {after}); restored it")
             return
-        if self.SAVE_SHEET.search(self.d.dump_hierarchy()):
+        if self.SAVE_SHEET.search(xml):
             self.d.press("back")  # close the collections sheet, stay in the player
             time.sleep(0.8)
         if not saved:
@@ -1719,13 +1796,15 @@ class Player:
         return any(f'content-desc="{t}"' in xml for t in UI_TEXT["copy_link"])
 
     def close_share_sheet(self):
-        """Back closes the sheet -- but only press it while the sheet is showing: otherwise
-        Back would leave the player."""
+        """Back closes the sheet -- but only press it while the sheet is showing (its "Copy
+        link" button is there): otherwise Back would leave the player. Waits until the button
+        is gone instead of a fixed second and a full screen read (DEVELOPMENT.md 4.16)."""
+        copy = self.d(packageName=PKG, descriptionMatches="^(" + "|".join(UI_TEXT["copy_link"]) + ")$")
         for _ in range(2):
-            if not self.share_sheet_open():
+            if not copy.exists:
                 return
             self.d.press("back")
-            time.sleep(1)
+            copy.wait_gone(timeout=1.5)
 
     def copy_link_in_player(self, desc):
         """Share -> "Copy link": Instagram puts the post's link on the phone's clipboard
@@ -1813,6 +1892,7 @@ class Player:
         speed = 2 if self.args.speed2x and self.speed_2x() else 1
         if not self.watch(self.in_viewer, followed=followed, speed=speed):
             return
+        self.before_xml = None  # the counts before this video's actions: read once (exact_count)
         if self.should_like(followed):
             self.like_in_player()
         if self.should_comment(followed):

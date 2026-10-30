@@ -336,6 +336,8 @@ of videos that hit the time limit (`maxwatch-*.npz`).
 
 ### Good to know
 
+- **Battery saver slows it down:** with the phone's battery saver on, each step takes longer
+  (~2 s more per video on the test phone); the startup block says when it's on.
 - **Phone battery:** the tool shows it at start and in the statistics. When the phone isn't
   charging it warns from 20 % (with the terminal's bell) and stops cleanly at 10 % — before
   the phone dies mid-run; `--battery-stop` changes the level, `0` only warns. It also warns at

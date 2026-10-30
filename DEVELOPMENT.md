@@ -34,6 +34,7 @@ Contents
    - 4.13 [Screen brightness](#413-screen-brightness) — keys < >, `--brightness`
    - 4.14 [profile_blocker](#414-profile_blocker) — the second tool: block / unblock a list of profiles
    - 4.15 [Phone battery](#415-phone-battery) — warnings, a clean stop when low, `--battery-stop`
+   - 4.16 [Time between videos](#416-time-between-videos) — what it costs and what made it shorter
 5. [How things were tested (and how to re-test)](#5-how-things-were-tested-and-how-to-re-test)
 6. [Known limitations and ideas](#6-known-limitations-and-ideas)
 7. [Pitfalls checklist](#7-pitfalls-checklist)
@@ -107,7 +108,7 @@ At startup the app prints a block with the phone, the Instagram version, the set
 phone's battery:
 
 ```
-── feed_autoplay 0.8.0 ─────────────────────────────────────────
+── feed_autoplay 0.9.0 ─────────────────────────────────────────
    phone      Samsung SM-A515F · Android 11 · serial R58N91XKQZT · Wi-Fi
    instagram  451.0.0.53.80
    playback   play all · 2x on · max 300 s per video
@@ -229,7 +230,7 @@ and gets fewer antivirus false alarms.
   v0.5.1 (the zip's folder renamed from `feed_autoplay` to `android-instagram-tools`; fixes:
   scrolling to Blocked (`UiObjectNotFoundError` in 0.5.0), unblocking through the list), v0.6.0
   (comments, `--comment-text`, 4.7e), v0.7.0 (`--comment-script` + `comment_greeting.bat`, 4.7e), v0.8.0 (phone battery,
-  `--battery-stop`, 4.15). The release pages of v0.2.0–v0.2.2 were deleted
+  `--battery-stop`, 4.15), v0.9.0 (shorter time between videos, 4.16). The release pages of v0.2.0–v0.2.2 were deleted
   on 2026-10-22 (superseded; nobody depended on them) and the one of v0.5.0 on 2026-10-23
   (superseded by v0.5.1 the same day: its scrolling bug); their **tags are kept** as the record
   of each version. To rebuild an old zip: Actions → windows-release → Run workflow → pick the
@@ -304,7 +305,7 @@ android-instagram-tools/
 ├── packaging/                    the Windows app: spec, build.py, files for the zip (1)
 ├── .github/workflows/            windows-release.yml: builds and publishes the zip on v* tags
 ├── examples/                     comment_greeting.py: a --comment-script (4.7e)
-├── tests/                        checks without a phone (test_ui_text.py 4.12, test_pause_stats.py 4.10, 4.11, test_brightness.py 4.13, test_comment.py 4.7e, test_profile_blocker.py 4.14, test_battery.py 4.15)
+├── tests/                        checks without a phone (test_ui_text.py 4.12, test_pause_stats.py 4.10, 4.11, test_brightness.py 4.13, test_comment.py 4.7e, test_profile_blocker.py 4.14, test_battery.py 4.15, test_navigation.py 4.16)
 └── Dockerfile, compose.yaml, README.md, DEVELOPMENT.md, CONTAINER.md
 ```
 
@@ -331,6 +332,7 @@ Until then `feed_autoplay.py` holds everything shared and `profile_blocker.py` i
 | `EndWatcher` | background thread following `adb logcat` for Instagram's end-of-video line |
 | `Player.find_video_header` | one hierarchy dump → topmost unhandled video post + followed flag |
 | `Player.post_id` / `is_seen` / `remember` | short memory of handled posts, robust to the "N minutes ago" label moving on |
+| `Player.scroll_past` / `watched_media_box` / `back_to_feed` | between videos: one aimed swipe past the watched post, the feed checked fully every 120 s (4.16) |
 | `Player.open_next_video` | scroll/pull/tap until a video is playing; returns `("player"\|"feed", desc, followed)` |
 | `Player.speed_2x` | edge press-and-hold + slide down to lock 2x |
 | `Player.watch` | waits for the end (log signal or frame comparison; log lines from pauses ignored), skip key, caps |
@@ -425,8 +427,8 @@ with sound. Back returns to the feed at the same position.
 failed to open the player — it landed on the strip at the bottom of the video where
 Instagram shows "Turn sound on"; taps at y ≈ 555 / 792 worked. A speed optimisation that
 tapped videos "wherever they are" caused streaks of 4–5 failures in a row.
-**Current rule:** if the header's top is below 35 % of the screen, pull the post up to ~12 %
-first, then tap 0.15·h below the header; if the player doesn't open within 5 s, tap once more
+**Current rule:** if the header's top is below 45 % of the screen (35 % until 0.9, 4.16), pull
+the post up to ~12 % first, then tap 0.15·h below the header; if the player doesn't open within 5 s, tap once more
 at the centre of the video (`media_box`). Only then fall back to the in-feed path.
 
 **In-feed path (`play_in_feed`).** For a video that still doesn't open, the script watches it
@@ -460,7 +462,8 @@ plays at 2x **while** the screen edge is pressed. Holding for the whole video wo
 with screenshots, so the script **locks** it:
 
 1. `touch.down` at **x = 60, y = 0.3·h** (left edge, upper third).
-2. After 1.2 s, read the hint Instagram shows while the finger is down (it *is* in the UI tree):
+2. From 0.5 s on (up to 1.6 s; a fixed 1.2 s until 0.9, 4.16), read the hint Instagram shows
+   while the finger is down (it *is* in the UI tree):
    - `"Slide down to lock 2X speed"` → not locked: move the finger down 400 px in 10 steps, release.
    - `"Slide down for normal speed"` → already locked: release without sliding (sliding would undo it).
 3. On release Instagram shows "Locked at 2X speed" — this toast is **not** in the UI tree.
@@ -1394,6 +1397,83 @@ mid-run (the app then only saw a lost connection and kept retrying). `Battery` w
   version checked only between videos and missed the charger events of a playing video —
   hence the check in the watch loop.
 
+### 4.16 Time between videos
+
+How long it takes from one video ending to the next playing at 2x, and what was changed to
+shorten it (0.9.0, 2026-10-29/30). Everything was measured on the test phone over Wi-Fi.
+
+**How it was measured.** A wrapper around the app (kept out of the repository: it only logs)
+times every step (`ensure_feed`, `scroll`, `open_next_video`, `speed_2x`, each action, each
+`dump_hierarchy`, Back); a small script reads a run's log and reports per transition: *nav* =
+end of a video (or its last action) → next video opened, *open → 2x*, the time of each action,
+and problems (errors, failed taps, missed 2x, the same post opened twice) plus every action's
+outcome (liked / already / not registered / restored …). Comparisons: the old and the new code
+**back to back, 20 min each, same settings**, battery saver off.
+
+**Where the time went (before):**
+
+| Step | Time |
+|---|---|
+| Back + a fixed 1 s + `ensure_feed` (screen/lock check, app, Home tab) | ~3.1 s |
+| scroll past the watched post (swipe + 0.6 s settle) | ~3.3 s |
+| find the next post, pull it up (swipe + 0.6 s), find it again, tap, player opens | ~6.9–8.8 s |
+| 2x: a fixed 1.2 s hold, read the hint, slide | ~3.7 s |
+| actions (like / copy link / save; repost when done) | 3.6 / 6.3 / 4.2 s (12.7 s) |
+
+- **A swipe costs ~1.6–1.8 s on this phone** whatever the method (`d.swipe` with a duration
+  or with steps, `adb shell input swipe`, `touch.down/move/up`); longer while feed videos load.
+  So *fewer swipes* matter, not faster ones. One `d.swipe(steps=20)` stalled for 64 s once.
+- **Battery saver costs ~2 s per transition** (navigation median 15.0 s on vs 13.0 s off).
+
+**Changes kept:**
+- **One aimed swipe past the watched post** (`scroll_past` / `watched_media_box`): from just
+  below its video (or 0.85·h, above the tab bar, when it reaches further down) to 0.10·h — the
+  next post lands near the top and is tapped without a "pull up" swipe. Whatever was below the
+  video lies below the swipe's start, so it moves up less than the swipe and lands at ≥ 0.05·h:
+  no post is pushed off the top unseen. The watched post is found like `is_seen()` (author +
+  posting time — its label moves on while it plays) and its `media_group` starts at the
+  header's top (the whole post). Swipe 0.5 s (no fling: landing positions matched).
+- **Direct tap up to 0.45·h** (was 0.35): the tap (header bottom + 0.15·h ≤ ~0.65·h) is still
+  well inside the video, above its "Turn sound on" strip; no failed tap in ~100 openings.
+- **`back_to_feed`:** after Back, wait for the feed (up to 2 s, it takes ~2 s to show) instead
+  of a fixed 1 s, and run the full `ensure_feed` only every `FEED_CHECK_EVERY` = 120 s — a
+  locked phone or another app shows no feed, so the full check (with the unlock wait) still
+  runs at once then.
+- **2x:** look for the hint from 0.5 s into the hold (up to 1.6 s) instead of a fixed 1.2 s.
+- **Actions:** one screen read for all the counts *before* a video's actions
+  (`exact_count(before=True)`, `before_xml`; a like doesn't change the save count); the share
+  sheet closed by waiting for "Copy link" to be gone (instead of a read, Back, 1 s, a read);
+  save: one read after the tap for both the count and the collections sheet, checks every 0.3 s;
+  like: the result checked every 0.25 s. All the safety checks (state before a tap, counts
+  before/after, Back only while a sheet is open) are unchanged.
+
+**Results (20 min each, back to back):**
+
+| | Before | After |
+|---|---|---|
+| navigation, mean (median), no actions | 15.4 s (13.0) | 14.0 s (14.0) |
+| open → 2x, mean (median), no actions | 3.7 s (4.0) | 3.1 s (3.0) |
+| like / copy link / save / repost | 3.6 / 6.3 / 4.2 / 12.7 s | 3.1 / 5.8 / 3.0 / 11.5 s |
+| navigation with the owner's settings, mean (median) | 15.4 s (14.0) | 14.0 s (12.5) |
+| outcomes (owner's settings) | liked 16/16, reposted 5, links 16/16, saved 16/16 | liked 15/15, reposted 6, links 15/15, saved 15/15 |
+| problems / same post twice | 0 / 0 | 0 / 0 |
+
+About **3.5–4 s less per video** with like + copy link + save. Runs vary a lot (the feed and
+the video lengths differ), so single short runs were misleading — see the medians.
+
+**Tried and dropped:**
+- *Look first, no scroll after Back* — the watched video fills the screen, so the next post
+  is never in view: no swipe saved, slower (15.0 s).
+- *Remembering the watched post's position from the tap* (saves a 0.4 s read) — if the feed
+  shifted meanwhile, the aimed swipe could push a post off the top: kept the fresh read.
+- *A shorter settle after the pull up* (A4, ~0.3 s) — a post still moving would be tapped
+  at the wrong place.
+- The repost's 8 s wait for a refusal stays (it arrives ~5 s after the optimistic "Reposted").
+
+`tests/test_navigation.py` (simulated phone): the watched post found after its label moved on,
+the swipe's start/end and fallback, the "nothing ends above 0.05·h" guarantee, when the full
+feed check runs, one read for all the "before" counts.
+
 ## 5. How things were tested (and how to re-test)
 
 **Without a phone.** `uv run tests/test_ui_text.py` checks all language-dependent text
@@ -1402,7 +1482,8 @@ statistics timing on a simulated clock (4.10, 4.11); `uv run tests/test_brightne
 brightness keys and restore on a simulated phone (4.13); `uv run tests/test_comment.py` the
 comment record and options (4.7e); `uv run tests/test_profile_blocker.py`
 checks profile_blocker's list parsing, results file and screen checks (4.14); `uv run
-tests/test_battery.py` the battery warnings and stop on a simulated phone and clock (4.15).
+tests/test_battery.py` the battery warnings and stop on a simulated phone and clock (4.15);
+`uv run tests/test_navigation.py` the time-saving navigation logic (4.16).
 
 **Live runs.** Run the script for a few minutes with `timeout -s INT 300 … < /dev/null > log`
 and read the log. To test keys without a person at the keyboard, feed them through a
@@ -1565,8 +1646,9 @@ repost"** message, and every repost tap was refused → repost refusal detection
 - High-motion videos can still be caught a pass or two late by the frame fallback (4.5 v6).
 - One 1x trace is missed by every detector setting tried; a fundamentally different signal
   would be needed for such videos (max-watch caps them).
-- Videos open ~10–12 s in (feed autoplay). Ideas: shave time between the post appearing and
-  the tap; find a reliable restart gesture (the next/back swipe was not reliable).
+- Videos open ~10–12 s in (feed autoplay). Ideas: find a reliable restart gesture (the
+  next/back swipe was not reliable). The time between videos was shortened in 0.9 (4.16); the
+  rest is mostly swipes (~1.6 s each on the test phone) and the repost's refusal window.
 - Frame fallback is ~5–6 s late by construction (see 4.5).
 - In-feed videos: rarely happen, path barely tested (see 4.3); they can't be reposted (4.7b),
   link-copied (4.7d) or saved (4.7c).
