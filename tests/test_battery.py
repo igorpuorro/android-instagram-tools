@@ -142,6 +142,99 @@ for value, ok in (("0", True), ("10", True), ("90", True), ("-1", False), ("91",
         got = False
     check(f"--battery-stop {value}", got, ok)
 
+# --- --battery-saver: set for the run, the phone's own back at the end and while paused ------
+class Settings:
+    def __init__(self, low_power=1, ignore=False, refuse=False):
+        self.low_power, self.ignore, self.refuse, self.calls = low_power, ignore, refuse, []
+
+    def shell(self, cmd):
+        self.calls.append(cmd)
+        if self.refuse:
+            raise RuntimeError("permission denied")
+        if cmd.startswith("settings put global low_power ") and not self.ignore:
+            self.low_power = int(cmd.split()[-1])
+        return types.SimpleNamespace(output=str(self.low_power))
+
+
+ph = Settings(low_power=1)
+saver = fa.BatterySaver(lambda: ph, "off")
+saver.apply()
+check("off: switched off", ph.low_power, 0)
+saver.hold()
+check("paused: the phone's own (on)", ph.low_power, 1)
+saver.release()
+check("resumed: off again", ph.low_power, 0)
+saver.restore()
+check("end: the phone's own (on)", ph.low_power, 1)
+
+ph = Settings(low_power=0)
+saver = fa.BatterySaver(lambda: ph, "off")
+saver.apply()
+saver.hold()
+saver.release()
+saver.restore()
+check("off when already off: only read", [c for c in ph.calls if "put" in c], [])
+
+ph = Settings(low_power=1)
+saver = fa.BatterySaver(lambda: ph, "keep")
+saver.apply()
+saver.hold()
+saver.release()
+saver.restore()
+check("keep: phone untouched", (ph.calls, ph.low_power), ([], 1))
+
+ph = Settings(low_power=0)
+saver = fa.BatterySaver(lambda: ph, "on")
+saver.apply()
+check("on: switched on", ph.low_power, 1)
+saver.hold()
+saver.restore()  # quitting while paused: the phone has its own already
+check("quit while paused: stays the phone's own", ph.low_power, 0)
+
+for kind in ("ignore", "refuse"):
+    lines.clear()
+    ph = Settings(low_power=1, **{kind: True})
+    saver = fa.BatterySaver(lambda: ph, "off")
+    saver.apply()
+    saver.restore()
+    check(f"{kind}: one message, gives up", (len([x for x in lines if "can't be changed" in x]), saver.want), (1, None))
+
+# key e: off <-> on, the phone's own back at the end; while paused only for the resume
+ph = Settings(low_power=1)
+saver = fa.BatterySaver(lambda: ph, "keep")
+lines.clear()
+saver.toggle()
+check("e from keep (phone on): off", (ph.low_power, lines[-1]), (0, "🔋 battery saver: off   (e: on)"))
+saver.toggle()
+check("e again: on", (ph.low_power, lines[-1]), (1, "🔋 battery saver: on   (e: off)"))
+saver.toggle()
+saver.hold()
+check("paused: the phone's own (on)", ph.low_power, 1)
+saver.toggle()  # e while paused: on for the run -- the phone keeps its own meanwhile
+check("e while paused: not applied yet", (ph.low_power, lines[-1]), (1, "🔋 battery saver: on (applied when resumed)   (e: off)"))
+saver.toggle()
+saver.release()
+check("resumed: off (pressed twice while paused)", ph.low_power, 0)
+saver.restore()
+check("end: the phone's own (on)", ph.low_power, 1)
+check("describe", (fa.BatterySaver(lambda: ph).describe(), saver.describe()), ("the phone's own", "off"))
+
+ph = Settings(low_power=0)
+saver = fa.BatterySaver(lambda: ph, "off")
+saver.apply()
+saver.toggle()
+check("--battery-saver off, then e: on", ph.low_power, 1)
+saver.restore()
+check("end: the phone's own (off)", ph.low_power, 0)
+
+ph = Settings(low_power=0, refuse=True)
+saver = fa.BatterySaver(lambda: ph, "keep")
+lines.clear()
+saver.toggle()
+saver.toggle()
+check("e on a refusing phone: one message, then a short note", (lines[0].startswith("  battery saver can't"),
+      lines[-1]), (True, "battery saver can't be changed on this phone"))
+
 if failures:
     print(f"{len(failures)} FAILED:")
     for f in failures:

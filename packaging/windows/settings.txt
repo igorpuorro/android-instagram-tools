@@ -9,6 +9,7 @@
 # --max-watch 300        # stop watching a video after this many seconds
 # --brightness 30        # phone screen brightness at start (keys < > change it while running)
 # --battery-stop 10      # stop when the phone's battery is this low and not charging (0 = only warn)
+# --battery-saver off    # battery saver off during the run (faster); yours comes back at the end
 
 # actions on videos watched to the end: none, followed or all
 --like all

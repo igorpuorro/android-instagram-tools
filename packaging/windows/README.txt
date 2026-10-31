@@ -50,6 +50,7 @@ Keys while it runs (in its window):
   b save mode
   < > phone screen dimmer / brighter (your own brightness comes back at the end)
   a   your own brightness again now (adaptive if it was)
+  e   battery saver off / on (faster when off; yours comes back at the end)
   s statistics    h / ? help     q quit
 
 Using the phone in between: press p, use the phone, press p again. q stops it: the final
@@ -82,6 +83,8 @@ first start sets play all, 2x, and like, repost, copy link and save all)
   --save none|followed|all       save to your private Saved collection (default none)
   --max-watch S                  stop watching a video after S seconds (default 300)
   --brightness PERCENT           phone screen brightness at start, 1-100 (default: unchanged)
+  --battery-saver keep|off|on    the phone's battery saver during the run (off = faster);
+                                 yours comes back at the end (default keep: unchanged)
   --battery-stop PERCENT         stop when the phone's battery is this low and not charging
                                  (default 10, warnings from 20; 0 = warnings only)
 All options: feed_autoplay.exe --help

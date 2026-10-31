@@ -291,6 +291,7 @@ The main ones (all of them: `--help`):
 | `--share-link` | **none** · followed · all | Share → Copy link; links collected in `runs/shared-links.txt` |
 | `--save` | **none** · followed · all | save them to your private Saved collection |
 | `--max-watch S` | **300** | stop watching a video after S seconds |
+| `--battery-saver` | **keep** · off · on | the phone's battery saver during the run (`off` makes it faster); key **e** switches it while running; your own setting comes back at the end and while paused |
 | `--battery-stop PERCENT` | **10** | stop cleanly when the phone's battery is this low and not charging (warnings from 10 % above; `0` = warnings only) |
 | `--brightness PERCENT` | (unchanged) | phone screen brightness at start, 1–100 (keys **<** **>** change it; the phone's own is restored at the end) |
 
@@ -317,7 +318,8 @@ there?) — e.g. `uv run feed_autoplay.py connect`; in the Windows app `feed_aut
 | **w** | play mode | **c** | copy-link mode |
 | **<** / **>** | phone screen dimmer / brighter | **b** | save mode |
 | **a** | the phone's own brightness again (adaptive if it was) | **s** | statistics |
-| **h** / **?** | help | **q** | quit |
+| **e** | battery saver off ↔ on (yours back at the end) | **h** / **?** | help |
+| | | **q** | quit |
 
 Keys work when the tool runs in a terminal window, not in the background.
 
@@ -338,6 +340,8 @@ of videos that hit the time limit (`maxwatch-*.npz`).
 
 - **Battery saver slows it down:** with the phone's battery saver on, each step takes longer
   (~2 s more per video on the test phone); the startup block says when it's on.
+  `--battery-saver off` (or key **e** while running) switches it off for the run and back on
+  at the end.
 - **Phone battery:** the tool shows it at start and in the statistics. When the phone isn't
   charging it warns from 20 % (with the terminal's bell) and stops cleanly at 10 % — before
   the phone dies mid-run; `--battery-stop` changes the level, `0` only warns. It also warns at

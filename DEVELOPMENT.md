@@ -78,6 +78,7 @@ all use.
 | | `--share-link none\|followed\|all` | `none` | which get Share → Copy link; links are appended to `runs/shared-links.txt` |
 | | `--save none\|followed\|all` | `none` | which get saved (to your private Saved collection) |
 | **device** | `-s`, `--serial SERIAL` | auto | adb serial; only needed with several *different* phones |
+| | `--battery-saver keep\|off\|on` | `keep` | the phone's battery saver for the run; its own setting back at the end and while paused (4.15) |
 | | `--battery-stop PERCENT` | 10 | stop cleanly at this battery level when not charging, warnings from +10 %; 0 = warnings only (4.15) |
 | **advanced tuning** | `--no-log` | (log on) | end-of-video by frame comparison only |
 | | `--ref-start`, `--loop-thresh`, `--loop-rel` | per-speed profile | override the frame-comparison profile (see 4.5) |
@@ -94,6 +95,7 @@ Keys while running (only when started from a terminal):
 | **x** | 2x speed on / off, from the next video (4.4, 4.10) |
 | **<** / **>** | phone screen dimmer / brighter (4.13) |
 | **a** | the phone's own brightness again, the app leaves it alone (4.13) |
+| **e** | battery saver off ↔ on for the run; the phone's own back at the end and while paused (4.15) |
 | **w** | cycle play mode: followed → all |
 | **l** | cycle like mode: none → followed → all |
 | **m** | cycle comment mode: none → followed → all (only with `--comment-text` or `--comment-script`) |
@@ -108,7 +110,7 @@ At startup the app prints a block with the phone, the Instagram version, the set
 phone's battery:
 
 ```
-── feed_autoplay 0.9.1 ─────────────────────────────────────────
+── feed_autoplay 0.10.0 ─────────────────────────────────────────
    phone      Samsung SM-A515F · Android 11 · serial R58N91XKQZT · Wi-Fi
    instagram  451.0.0.53.80
    playback   play all · 2x on · max 300 s per video
@@ -231,7 +233,7 @@ and gets fewer antivirus false alarms.
   scrolling to Blocked (`UiObjectNotFoundError` in 0.5.0), unblocking through the list), v0.6.0
   (comments, `--comment-text`, 4.7e), v0.7.0 (`--comment-script` + `comment_greeting.bat`, 4.7e), v0.8.0 (phone battery,
   `--battery-stop`, 4.15), v0.9.0 (shorter time between videos, 4.16), v0.9.1 (likes confirmed by count and icon — a
-  second tap had been removing them; like refusals counted and paused, 4.7). The release pages of v0.2.0–v0.2.2 were deleted
+  second tap had been removing them; like refusals counted and paused, 4.7), v0.10.0 (`--battery-saver`, 4.15). The release pages of v0.2.0–v0.2.2 were deleted
   on 2026-10-22 (superseded; nobody depended on them) and the one of v0.5.0 on 2026-10-23
   (superseded by v0.5.1 the same day: its scrolling bug); their **tags are kept** as the record
   of each version. To rebuild an old zip: Actions → windows-release → Run workflow → pick the
@@ -322,7 +324,7 @@ Until then `feed_autoplay.py` holds everything shared and `profile_blocker.py` i
 | `Battery` / `read_battery` / `Player.check_battery` | the phone's battery: warnings, the clean stop, charger events, heat (4.15) |
 | `Brightness` | the phone's screen brightness: keys < >, `--brightness`, saved and restored (4.13) |
 | `Player.pause` / `Resumed` | the hand-the-phone-over pause (4.10); `Resumed` sends the run back to the Home feed |
-| `Player.poll` / `Player.key` | poll: the stop file and the global keys (q, x, w, l, m, r, c, b, < > a, s, h/?); key: adds the pause (p / `runs/PAUSE`) and returns only n to the caller |
+| `Player.poll` / `Player.key` | poll: the stop file and the global keys (q, x, w, l, m, r, c, b, < > a, e, s, h/?); key: adds the pause (p / `runs/PAUSE`) and returns only n to the caller |
 | `COMMANDS`: `connect_wizard`, `disconnect`, `run_adb`, `self_check` | the helper commands connect / disconnect / adb / check (1) |
 | `entry` / `settings_args` / `owns_console` | start: a helper command or the app; `settings.txt` for the Windows app; its own window waits for Enter at the end (1) |
 | `FROZEN`, `BUNDLE_DIR`, `APP_DIR`, `RUNS` | where files are, as a script or as the Windows app (1) |
@@ -944,7 +946,7 @@ feed and while watching; it calls `Player.poll()`, which handles the global keys
 `Quit`; w / l / m / r / c / b cycle `args.play` / `args.like` / `args.comment` /
 `args.repost` / `args.share_link` / `args.save` in place (one table, `MODE_KEYS`) and log the
 new mode with its cycle, e.g. `like mode: all   (none → followed → [all])`; x toggles
-`args.speed2x` (2x on/off, `SPEED_MODES`); < > a go to `Brightness` (4.13); s prints the stats;
+`args.speed2x` (2x on/off, `SPEED_MODES`); < > a go to `Brightness` (4.13), e to `BatterySaver` (4.15); s prints the stats;
 h/? prints the help block); `key()` itself handles the pause (p) and returns only n to the
 caller.
 
@@ -959,6 +961,7 @@ with the current mode marked inside each key's cycle:
               w  play mode        followed → [all]
               <  >  brightness    dimmer / brighter         now 30%
               a  brightness       the phone's own again     (adaptive if it was)
+              e  battery saver    off ↔ on                  now the phone's own
    actions    l  like mode        none → followed → [all]
    (screen    m  comment mode     none → [followed] → all   public, under your name
     order)    r  repost mode      none → [followed] → all   shows on your profile
@@ -1384,7 +1387,7 @@ mid-run (the app then only saw a lost connection and kept retrying). `Battery` w
 - **Reading:** `adb shell dumpsys battery` (any Android, no root, ~0.1 s): `level`, `status`
   (2 charging, 3 discharging, 4 not charging, 5 full), `AC/USB/Wireless/Dock powered`,
   `temperature` (tenths of °C). `read_battery()` / `describe_battery()` →
-  `64% · discharging · 31 °C`. Battery saver: `settings get global low_power` (startup only —
+  `64% · discharging · 31 °C`. Battery saver: `settings get global low_power` (shown at startup —
   it can slow the phone, as in the lag investigation of 4.13).
 - **When:** `Player.check_battery()` between videos and inside the watch loop, at most every
   `Battery.EVERY` = 120 s (the first time right at start). The statistics block (every 20
@@ -1399,6 +1402,19 @@ mid-run (the app then only saw a lost connection and kept retrying). `Battery` w
   on a charger (long runs heat the phone; heat ages the battery).
 - **The bell** (`\a`) only goes to a terminal (`isatty`), never into a log file. Desktop
   notifications were left out: they need different tools per system.
+- **`--battery-saver keep|off|on` and key e** (0.10.0, `BatterySaver`; e toggles off ↔ on from
+  the run's value, or from the phone's own the first time; pressed while paused it takes effect
+  on resume): `adb shell settings put global
+  low_power 0|1` — no root; on the test phone `mSettingBatterySaverEnabled` followed at once.
+  `off` is the useful value (battery saver costs ~2 s per video, 4.16). The phone's own setting
+  is saved first and put back at the end (`main()`'s `finally`) and while paused
+  (`hold()`/`release()`, like brightness); `keep` (default) never touches it. Samsung's
+  "Power saving" extras (CPU limit, dimmer screen) may not follow exactly; charging can switch
+  battery saver off by itself on some phones. A phone that refuses: one line, then left alone.
+- **Battery saver tested (2026-10-30)** with the phone's own setting on: `--battery-saver off` →
+  off while running, on while paused, off after resume, on after q; key e from keep: off, on
+  (yours) while paused, e while paused "applied when resumed", e again → off, q → on. Offline:
+  on/off/keep, the pause hand-back, e while paused, quitting while paused, a refusing phone.
 - **Tested (2026-10-29):** `tests/test_battery.py` (real `dumpsys battery` text: charging /
   discharging / full / wireless / unreadable; warnings and their repeats, the stop, charger
   events, heat, `--battery-stop 0` and 30). Live with Android's own battery faking

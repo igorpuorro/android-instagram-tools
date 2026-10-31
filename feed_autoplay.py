@@ -17,7 +17,7 @@ Keys while running (h shows them):
   n = next video  p = pause (hand the phone over) / resume  x = 2x on/off  w = play mode
   l = like mode  m = comment mode  r = repost mode  c = copy-link mode  b = save mode
   < > = phone brightness
-  a = the phone's own brightness again  s = statistics  q = quit
+  a = the phone's own brightness again  e = battery saver off/on  s = statistics  q = quit
 Without keys (background runs): create the file runs/STOP to stop cleanly; while the file
 runs/PAUSE exists the run is paused.
 
@@ -42,7 +42,7 @@ import time
 import traceback
 from pathlib import Path
 
-__version__ = "0.9.1"  # same as pyproject.toml; the Windows release tag is v<version>
+__version__ = "0.10.0"  # same as pyproject.toml; the Windows release tag is v<version>
 
 WINDOWS = os.name == "nt"
 # Running as the Windows app built by PyInstaller (packaging/, DEVELOPMENT.md 1): the bundled
@@ -597,6 +597,101 @@ class Battery:
         return None
 
 
+class BatterySaver:
+    """Android's battery saver for the run (--battery-saver, key e; DEVELOPMENT.md 4.15):
+    `adb shell settings put global low_power 1|0` -- no root, takes effect at once
+    (mSettingBatterySaverEnabled follows). It slows the phone down (~2 s more per video on the
+    test phone, 4.16), so `off` is the useful value; `keep` (default) leaves it alone until e
+    is pressed. The phone's own setting is saved before the first change and put back at the
+    end and while paused (the phone is the user's then; e while paused takes effect on
+    resume). Samsung's own "Power saving" extras (CPU limit, dimmer screen) may not follow
+    exactly."""
+
+    def __init__(self, device, want="keep"):
+        self.device = device  # callable: the current uiautomator2 device
+        self.want = {"off": 0, "on": 1}.get(want)  # the run's value; None = keep (the phone's own)
+        self.saved = None     # the phone's own setting before the first change
+        self.paused = False   # the phone's own setting is on for a pause
+        self.broken = False
+
+    def _get(self):
+        return 1 if self.device().shell("settings get global low_power").output.strip() == "1" else 0
+
+    def _put(self, value):
+        self.device().shell(f"settings put global low_power {value}")
+
+    def _fail(self, e):
+        if not self.broken:
+            log(f"  battery saver can't be changed on this phone ({type(e).__name__}: {str(e)[:80]})")
+        self.broken, self.want = True, None
+
+    def _set(self, value):
+        self._put(value)
+        if self._get() != value:
+            raise RuntimeError("the setting didn't stick")
+
+    def _differs(self):
+        return self.want is not None and self.saved is not None and self.want != self.saved
+
+    def apply(self):
+        """Start: the --battery-saver value (saving the phone's own first)."""
+        if self.want is None or self.broken:
+            return
+        try:
+            self.saved = self._get()
+            if self._differs():
+                self._set(self.want)
+        except Exception as e:
+            self._fail(e)
+
+    def toggle(self):
+        """Key e: battery saver off <-> on for the run (from the phone's own the first time)."""
+        if self.broken:
+            log("battery saver can't be changed on this phone")
+            return
+        try:
+            if self.saved is None:
+                self.saved = self._get()
+            self.want = 1 - (self.want if self.want is not None else self.saved)
+            if not self.paused:
+                self._set(self.want)
+        except Exception as e:
+            self._fail(e)
+            return
+        state, other = ("on", "off") if self.want else ("off", "on")
+        later = " (applied when resumed)" if self.paused else ""
+        log(f"🔋 battery saver: {state}{later}   (e: {other})")
+
+    def restore(self):
+        """The phone's own setting back (end of run); safe to call any time."""
+        if self.broken or self.paused or not self._differs():
+            return
+        try:
+            self._put(self.saved)
+        except Exception as e:
+            log(f"  could not restore the battery saver ({type(e).__name__})")
+
+    def hold(self):
+        """Pause: the phone's own setting until release()."""
+        self.restore()
+        self.paused = True
+
+    def release(self):
+        """Resume: the run's value again (also one chosen with e while paused)."""
+        self.paused = False
+        if self.broken or not self._differs():
+            return
+        try:
+            self._put(self.want)
+        except Exception:
+            pass
+
+    def describe(self):
+        if self.want is None:
+            return "the phone's own"
+        return "on" if self.want else "off"
+
+
 def bell():
     """The terminal bell -- most terminals beep or flash the tab; never into a log file."""
     if sys.stdout.isatty():
@@ -611,6 +706,7 @@ class Player:
         self.keys = keys
         self.ends = ends  # EndWatcher, or None to rely on frame comparison only
         self.brightness = Brightness(lambda: self.d)
+        self.saver = BatterySaver(lambda: self.d, getattr(args, "battery_saver", "keep"))
         self.battery = Battery(lambda: self.d, getattr(args, "battery_stop", 10))
         self.w, self.h = d.window_size()
         self.seen = []  # recently watched post keys, to avoid replaying after Back
@@ -796,6 +892,8 @@ class Player:
             self.brightness.step(up=k == ">")
         elif k == "a":
             self.brightness.give_back()
+        elif k == "e":
+            self.saver.toggle()
         elif k == "s":
             self.report()
         elif k in ("h", "?"):
@@ -822,6 +920,7 @@ class Player:
             except Exception:  # can't tell later whether it's unchanged: start over on resume
                 ref = None
         self.brightness.hold()  # the phone's own brightness while it is the user's
+        self.saver.hold()       # and its own battery saver setting
         how = f"delete {PAUSE_FILE} to resume" if by_file else "p to resume"
         log(f"⏸ paused: the phone is yours ({how})")
         try:
@@ -840,6 +939,7 @@ class Player:
         except OSError:
             pass
         self.brightness.release()
+        self.saver.release()
         if ref and self.same_paused_video(*ref):
             self.d.click(self.w // 2, self.h // 2)
             log(f"▶ resumed after {self.hm(t1 - t0)}")
@@ -891,6 +991,8 @@ class Player:
         log(f"              {light:<45} now {self.brightness.describe()}")
         own = "a  brightness".ljust(20) + "the phone's own again"
         log(f"              {own:<45} (adaptive if it was)")
+        saver = "e  battery saver".ljust(20) + "off ↔ on"
+        log(f"              {saver:<45} now {self.saver.describe()}")
         log(f"   actions    {mode('l')}")
         log(f"   (screen    {mode('m')}")
         log(f"    order)    {mode('r')}")
@@ -2023,8 +2125,13 @@ def startup_report(d, args, keys_on, settings_from=None):
         saver = False
     stop = (f"stops at {args.battery_stop}% unless charging" if args.battery_stop
             else "warnings only (--battery-stop 0)")
-    log(f"   battery    {describe_battery(read_battery(d))} · {stop}"
-        + (" · ⚠ battery saver on (can slow the phone)" if saver else ""))
+    if args.battery_saver == "keep":
+        saver_text = " · ⚠ battery saver on (can slow the phone; --battery-saver off)" if saver else ""
+    else:
+        own = "on" if saver else "off"
+        saver_text = (f" · battery saver {args.battery_saver} for this run"
+                      + (f" (yours: {own}, restored at the end)" if own != args.battery_saver else ""))
+    log(f"   battery    {describe_battery(read_battery(d))} · {stop}{saver_text}")
     log(f"   end        " + ("Instagram's log + frame comparison" if args.use_log else "frame comparison only (--no-log)"))
     stop = "create runs\\STOP" if WINDOWS else "Ctrl-C, kill <pid> or create runs/STOP"
     pause = "create / delete runs\\PAUSE" if WINDOWS else "create / delete runs/PAUSE"
@@ -2309,6 +2416,11 @@ def main():
                    help="lock 2x playback speed for each video (default: normal speed; key x toggles it)")
     g.add_argument("--loops", type=int, default=1, help="how many times to watch each video (default 1)")
     g.add_argument("--max-watch", type=float, default=300, help="max seconds per video (default 300)")
+    g.add_argument("--battery-saver", choices=["keep", "off", "on"], default="keep",
+                   help="the phone's battery saver during the run: off (it slows the phone down: "
+                        "~2 s more per video measured), on, or keep (default: unchanged); key e "
+                        "switches it while running; the phone's own setting is restored at the "
+                        "end and while paused")
     g.add_argument("--brightness", type=percent, metavar="PERCENT",
                    help="set the phone's screen brightness at start, 1-100 %% (keys < > change it "
                         "while running; the phone's own is restored at the end; default: unchanged)")
@@ -2399,12 +2511,14 @@ def main():
         try:
             if args.brightness:
                 player.brightness.set(args.brightness)
+            player.saver.apply()
             player.run()
         except (Quit, KeyboardInterrupt):
             player.report()
             log("bye")
         finally:
             player.brightness.restore()  # the phone's own brightness and mode back
+            player.saver.restore()      # and its own battery saver setting
             if ends:
                 ends.stop()
 
