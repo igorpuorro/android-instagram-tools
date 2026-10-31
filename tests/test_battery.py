@@ -235,6 +235,19 @@ saver.toggle()
 check("e on a refusing phone: one message, then a short note", (lines[0].startswith("  battery saver can't"),
       lines[-1]), (True, "battery saver can't be changed on this phone"))
 
+# the statistics block's battery line: the battery saver state, read fresh
+import argparse as _ap  # noqa: E402
+ph = Settings(low_power=1)
+dev = types.SimpleNamespace(window_size=lambda: (1080, 2340), shell=ph.shell)
+p = fa.Player(dev, _ap.Namespace(play="all"), None)
+check("stats: phone's own on", p.saver_status(), " · battery saver on")
+p.saver.toggle()
+check("stats: set by the app", p.saver_status(), " · battery saver off (for this run)")
+p.saver.hold()
+check("stats: while paused (the phone's own)", p.saver_status(), " · battery saver on")
+bad = types.SimpleNamespace(window_size=lambda: (1080, 2340), shell=lambda cmd: (_ for _ in ()).throw(RuntimeError("offline")))
+check("stats: unreadable -> nothing", fa.Player(bad, _ap.Namespace(play="all"), None).saver_status(), "")
+
 if failures:
     print(f"{len(failures)} FAILED:")
     for f in failures:

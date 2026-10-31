@@ -342,7 +342,8 @@ of videos that hit the time limit (`maxwatch-*.npz`).
   (~2 s more per video on the test phone); the startup block says when it's on.
   `--battery-saver off` (or key **e** while running) switches it off for the run and back on
   at the end.
-- **Phone battery:** the tool shows it at start and in the statistics. When the phone isn't
+- **Phone battery:** the tool shows it at start and in the statistics (with the battery saver
+  state). When the phone isn't
   charging it warns from 20 % (with the terminal's bell) and stops cleanly at 10 % — before
   the phone dies mid-run; `--battery-stop` changes the level, `0` only warns. It also warns at
   42 °C and stops at 45 °C.

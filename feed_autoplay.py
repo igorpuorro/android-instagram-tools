@@ -42,7 +42,7 @@ import time
 import traceback
 from pathlib import Path
 
-__version__ = "0.10.0"  # same as pyproject.toml; the Windows release tag is v<version>
+__version__ = "0.10.1"  # same as pyproject.toml; the Windows release tag is v<version>
 
 WINDOWS = os.name == "nt"
 # Running as the Windows app built by PyInstaller (packaging/, DEVELOPMENT.md 1): the bundled
@@ -808,8 +808,18 @@ class Player:
             f"max-time {s['end_max']}")
         log(f"   waits    errors recovered {s['errors']} · locked {self.hm(self.waited['locked'])} · "
             f"reconnecting {self.hm(self.waited['reconnect'])} · paused {self.hm(paused)}")
-        log(f"   battery  {describe_battery(self.battery.now())}")
+        log(f"   battery  {describe_battery(self.battery.now())}{self.saver_status()}")
         log_block_end()
+
+    def saver_status(self):
+        """' · battery saver off (for this run)' for the statistics block: the phone's current
+        setting, read fresh; '(for this run)' when the app set it (--battery-saver / key e)."""
+        try:
+            on = self.d.shell("settings get global low_power").output.strip() == "1"
+        except Exception:
+            return ""
+        mine = " (for this run)" if self.saver.want is not None and not self.saver.paused else ""
+        return f" · battery saver {'on' if on else 'off'}{mine}"
 
     def locked(self):
         """Is the lock screen showing? ("screen on" alone can't tell: it is also on while

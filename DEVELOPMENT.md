@@ -110,7 +110,7 @@ At startup the app prints a block with the phone, the Instagram version, the set
 phone's battery:
 
 ```
-── feed_autoplay 0.10.0 ─────────────────────────────────────────
+── feed_autoplay 0.10.1 ─────────────────────────────────────────
    phone      Samsung SM-A515F · Android 11 · serial R58N91XKQZT · Wi-Fi
    instagram  451.0.0.53.80
    playback   play all · 2x on · max 300 s per video
@@ -233,7 +233,7 @@ and gets fewer antivirus false alarms.
   scrolling to Blocked (`UiObjectNotFoundError` in 0.5.0), unblocking through the list), v0.6.0
   (comments, `--comment-text`, 4.7e), v0.7.0 (`--comment-script` + `comment_greeting.bat`, 4.7e), v0.8.0 (phone battery,
   `--battery-stop`, 4.15), v0.9.0 (shorter time between videos, 4.16), v0.9.1 (likes confirmed by count and icon — a
-  second tap had been removing them; like refusals counted and paused, 4.7), v0.10.0 (`--battery-saver`, 4.15). The release pages of v0.2.0–v0.2.2 were deleted
+  second tap had been removing them; like refusals counted and paused, 4.7), v0.10.0 (`--battery-saver`, key e, 4.15), v0.10.1 (battery saver state in the statistics). The release pages of v0.2.0–v0.2.2 were deleted
   on 2026-10-22 (superseded; nobody depended on them) and the one of v0.5.0 on 2026-10-23
   (superseded by v0.5.1 the same day: its scrolling bug); their **tags are kept** as the record
   of each version. To rebuild an old zip: Actions → windows-release → Run workflow → pick the
@@ -1052,7 +1052,7 @@ Logged every 20 played videos, on quit and on key **s** (`Player.report`):
    actions  liked 302 (refused 0) · commented 0 (refused 0) · reposted 0 (refused 0) · links copied 0 · saved 0
    ends     log 231 · frames 67 · static 1 · max-time 3
    waits    errors recovered 17 · locked 5h 14m · reconnecting 24m · paused 0m
-   battery  64% · discharging · 31 °C
+   battery  64% · discharging · 31 °C · battery saver off (for this run)
 ────────────────────────────────────────────────────────────────
 ```
 
@@ -1411,6 +1411,9 @@ mid-run (the app then only saw a lost connection and kept retrying). `Battery` w
   (`hold()`/`release()`, like brightness); `keep` (default) never touches it. Samsung's
   "Power saving" extras (CPU limit, dimmer screen) may not follow exactly; charging can switch
   battery saver off by itself on some phones. A phone that refuses: one line, then left alone.
+- **In the statistics** (0.10.1, `Player.saver_status`): the battery line ends with the phone's
+  battery saver state, read fresh (`settings get global low_power`), "(for this run)" when the
+  app set it (option or e) and the run isn't paused.
 - **Battery saver tested (2026-10-30)** with the phone's own setting on: `--battery-saver off` →
   off while running, on while paused, off after resume, on after q; key e from keep: off, on
   (yours) while paused, e while paused "applied when resumed", e again → off, q → on. Offline:
