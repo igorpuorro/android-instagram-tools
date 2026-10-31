@@ -42,7 +42,7 @@ import time
 import traceback
 from pathlib import Path
 
-__version__ = "0.10.1"  # same as pyproject.toml; the Windows release tag is v<version>
+__version__ = "0.10.2"  # same as pyproject.toml; the Windows release tag is v<version>
 
 WINDOWS = os.name == "nt"
 # Running as the Windows app built by PyInstaller (packaging/, DEVELOPMENT.md 1): the bundled
@@ -2136,7 +2136,8 @@ def startup_report(d, args, keys_on, settings_from=None):
     stop = (f"stops at {args.battery_stop}% unless charging" if args.battery_stop
             else "warnings only (--battery-stop 0)")
     if args.battery_saver == "keep":
-        saver_text = " · ⚠ battery saver on (can slow the phone; --battery-saver off)" if saver else ""
+        saver_text = (" · battery saver on ⚠ (can slow the phone; --battery-saver off or key e)" if saver
+                      else " · battery saver off")
     else:
         own = "on" if saver else "off"
         saver_text = (f" · battery saver {args.battery_saver} for this run"

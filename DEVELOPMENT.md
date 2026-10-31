@@ -110,12 +110,12 @@ At startup the app prints a block with the phone, the Instagram version, the set
 phone's battery:
 
 ```
-── feed_autoplay 0.10.1 ─────────────────────────────────────────
+── feed_autoplay 0.10.2 ─────────────────────────────────────────
    phone      Samsung SM-A515F · Android 11 · serial R58N91XKQZT · Wi-Fi
    instagram  451.0.0.53.80
    playback   play all · 2x on · max 300 s per video
    actions    like all · comment none · repost followed · copy link none · save none
-   battery    64% · discharging · 31 °C · stops at 10% unless charging
+   battery    64% · discharging · 31 °C · stops at 10% unless charging · battery saver off
    end        Instagram's log + frame comparison
    keys       press h for help
 ────────────────────────────────────────────────────────────────
@@ -233,7 +233,7 @@ and gets fewer antivirus false alarms.
   scrolling to Blocked (`UiObjectNotFoundError` in 0.5.0), unblocking through the list), v0.6.0
   (comments, `--comment-text`, 4.7e), v0.7.0 (`--comment-script` + `comment_greeting.bat`, 4.7e), v0.8.0 (phone battery,
   `--battery-stop`, 4.15), v0.9.0 (shorter time between videos, 4.16), v0.9.1 (likes confirmed by count and icon — a
-  second tap had been removing them; like refusals counted and paused, 4.7), v0.10.0 (`--battery-saver`, key e, 4.15), v0.10.1 (battery saver state in the statistics). The release pages of v0.2.0–v0.2.2 were deleted
+  second tap had been removing them; like refusals counted and paused, 4.7), v0.10.0 (`--battery-saver`, key e, 4.15), v0.10.1 (battery saver state in the statistics), v0.10.2 (and always in the startup block). The release pages of v0.2.0–v0.2.2 were deleted
   on 2026-10-22 (superseded; nobody depended on them) and the one of v0.5.0 on 2026-10-23
   (superseded by v0.5.1 the same day: its scrolling bug); their **tags are kept** as the record
   of each version. To rebuild an old zip: Actions → windows-release → Run workflow → pick the
