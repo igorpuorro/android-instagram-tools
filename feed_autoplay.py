@@ -42,7 +42,7 @@ import time
 import traceback
 from pathlib import Path
 
-__version__ = "0.11.0"  # same as pyproject.toml; the Windows release tag is v<version>
+__version__ = "0.11.1"  # same as pyproject.toml; the Windows release tag is v<version>
 
 WINDOWS = os.name == "nt"
 # Running as the Windows app built by PyInstaller (packaging/, DEVELOPMENT.md 1): the bundled
@@ -543,13 +543,16 @@ class Battery:
     """Watches the phone's battery between videos (DEVELOPMENT.md 4.15): with the phone away and
     the screen dimmed, a low battery goes unnoticed until the phone dies mid-run.
 
-    Not on a charger: a warning (plus the terminal bell) at every check from `stop` + 10 % --
-    every 2 min, so it's noticed with the phone away and dimmed -- and at `stop` % the run
+    Not on a charger: a warning (plus the terminal bell) every 2 min from `stop` + 10 % -- so
+    it's noticed with the phone away and dimmed -- and at once when unplugged there (from the
+    warning level on the battery is checked every 30 s, not 2 min); at `stop` % the run
     pauses until the charger is plugged in (Player.check_battery). stop 0 = warnings only.
     Charger plugged in / out is logged. Heat: a warning at 42 °C, a pause at 45 °C until it's
     below 40 °C (also on a charger). One `dumpsys battery` call (~0.1 s) at most every 2 min."""
 
     EVERY = 120          # seconds between checks
+    EVERY_LOW = 30       # ... once the battery is at the warning level: unplugging is noticed fast
+    WARN_EVERY = 120     # seconds between repeated low-battery warnings
     HOT, TOO_HOT = 42, 45  # °C
 
     def __init__(self, device, stop=10):
@@ -558,6 +561,7 @@ class Battery:
         self.warn = stop + 10 if stop else 20
         self.last = None      # last reading
         self.checked = 0.0
+        self.warned = 0.0     # last low-battery warning
         self.hot = False
 
     def now(self):
@@ -569,18 +573,22 @@ class Battery:
 
     def check(self, force=False):
         """Read the battery if it's time; log what changed. Returns why the run must stop, or None."""
-        if not force and time.time() - self.checked < self.EVERY:
+        low = self.last is not None and self.last["level"] <= self.warn
+        if not force and time.time() - self.checked < (self.EVERY_LOW if low else self.EVERY):
             return None
         self.checked = time.time()
         before, b = self.last, self.now()
         if not b:
             return None
+        unplugged = bool(before and before["plugged"] and not b["plugged"])
         if before and bool(before["plugged"]) != bool(b["plugged"]):
             log(f"🔌 phone {'on the charger' if b['plugged'] else 'unplugged'}: battery {describe_battery(b)}")
         if not b["plugged"]:
             if self.stop and b["level"] <= self.stop:
                 return f"phone battery {b['level']}% and not charging"
-            if b["level"] <= self.warn:  # at every check: regular, with the bell
+            # regular warnings, with the bell: every WARN_EVERY s, and at once when unplugged low
+            if b["level"] <= self.warn and (unplugged or time.time() - self.warned >= self.WARN_EVERY):
+                self.warned = time.time()
                 bell()
                 stop = f" -- pausing at {self.stop}% until it's charging" if self.stop else ""
                 log(f"⚠ phone battery {b['level']}% and not charging{stop}")
@@ -1546,9 +1554,16 @@ class Player:
             like.click()
             log(f"  ⚠ like had been on (count {before} -> {after}); restored it")
             return
-        # Nothing shows the like after 3 s (no flag, no higher count, a plain heart): the tap
-        # was lost -- or, with an abbreviated count, the post had been liked and the tap
-        # removed it. One more tap ends liked in both cases.
+        if count_kind and (before is not None and after is not None and after > before
+                           or self.heart_looks_liked(like.info["bounds"])):
+            # it went through after all (late): a second tap would remove it
+            log("  ♥ liked")
+            self.stats["liked"] += 1
+            self.like_backoff = REPOST_BACKOFF_MIN
+            return
+        # Nothing shows the like after 4 s and a last look (no flag, no higher count, a plain
+        # heart): the tap was lost -- or, with an abbreviated count, the post had been liked
+        # and the tap removed it. One more tap ends liked in both cases.
         like.click()
         state = self.wait_liked(like, count_kind, after)
         if state == "liked":
@@ -1559,13 +1574,16 @@ class Player:
         else:
             log("  ♡ like did not register")
 
-    def wait_liked(self, like, count_kind=None, before=None, timeout=3.0):
+    def wait_liked(self, like, count_kind=None, before=None, timeout=4.0):
         """After a tap: "liked", "refused" or None (nothing within `timeout`). Liked when any
         sign says so: the button's flag/label, or -- in the full-screen player (count_kind) --
-        the exact count one higher than `before`, or the heart drawn liked twice in a row.
+        the exact count higher than `before`, or the heart drawn liked once. One heart reading
+        is enough here (twice in a row until 0.11.1): a wrong "liked" only leaves a like out,
+        a wrong "not liked" led to a second tap that removed the like -- seen on a post that
+        hides its count, where the slow phone fitted one reading into 3 s (DEVELOPMENT.md 4.7).
         Refused: Instagram's refusal in a snackbar or dialog (the dialog is closed)."""
         end = time.time() + timeout
-        icon_liked, n = 0, 0
+        n = 0
         while True:
             time.sleep(0.25)
             n += 1
@@ -1581,8 +1599,7 @@ class Player:
                 after = self.exact_count(count_kind)
                 if before is not None and after is not None and after > before:
                     return "liked"
-                icon_liked = icon_liked + 1 if self.heart_looks_liked(info["bounds"]) else 0
-                if icon_liked >= 2:
+                if self.heart_looks_liked(info["bounds"]):
                     return "liked"
             if time.time() > end:
                 return None

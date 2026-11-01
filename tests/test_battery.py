@@ -104,6 +104,40 @@ check("after charging: warns again at 20 %", (at(20), lines[-1]),
 check("forced check works between intervals", (phone.__setattr__("out", dumpsys(8)), b.check(force=True))[1],
       "phone battery 8% and not charging")
 
+# the low zone: checked every 30 s, a warning at once when unplugged, repeats every 2 min only
+phone = Phone()
+b = fa.Battery(lambda: phone)
+lines.clear()
+phone.out = dumpsys(18, status=2, usb=True)  # low but on the charger
+clock.now += fa.Battery.EVERY
+b.check()
+check("low on the charger: quiet", lines, [])
+phone.out = dumpsys(18)                       # unplugged
+clock.now += 30
+check("30 s later: checked (low zone)", b.check(), None)
+check("unplugged low: event + warning at once", lines[-3:],
+      ["🔌 phone unplugged: battery 18% · discharging · 31 °C", "BELL",
+       "⚠ phone battery 18% and not charging -- pausing at 10% until it's charging"])
+n = len(lines)
+for _ in range(3):                            # 30, 60, 90 s: checked, no repeat yet
+    clock.now += 30
+    b.check()
+check("no repeat within 2 min", lines[n:], [])
+clock.now += 30
+b.check()
+check("repeat after 2 min", lines[-1], "⚠ phone battery 18% and not charging -- pausing at 10% until it's charging")
+phone.out = dumpsys(9)
+clock.now += 30
+check("pause level reached within 30 s", b.check(), "phone battery 9% and not charging")
+phone = Phone()                               # above the warning level: every 2 min
+b = fa.Battery(lambda: phone)
+clock.now += fa.Battery.EVERY
+b.check()
+phone.out = dumpsys(50)
+clock.now += 30
+b.check()
+check("50 %: not read again after 30 s", b.last["level"], 64)
+
 # recovered(): when a battery pause may end
 phone = Phone()
 b = fa.Battery(lambda: phone)

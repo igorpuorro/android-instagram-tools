@@ -110,7 +110,7 @@ At startup the app prints a block with the phone, the Instagram version, the set
 phone's battery:
 
 ```
-── feed_autoplay 0.11.0 ─────────────────────────────────────────
+── feed_autoplay 0.11.1 ─────────────────────────────────────────
    phone      Samsung SM-A515F · Android 11 · serial R58N91XKQZT · Wi-Fi
    instagram  451.0.0.53.80
    playback   play all · 2x on · max 300 s per video
@@ -234,7 +234,8 @@ and gets fewer antivirus false alarms.
   (comments, `--comment-text`, 4.7e), v0.7.0 (`--comment-script` + `comment_greeting.bat`, 4.7e), v0.8.0 (phone battery,
   `--battery-stop`, 4.15), v0.9.0 (shorter time between videos, 4.16), v0.9.1 (likes confirmed by count and icon — a
   second tap had been removing them; like refusals counted and paused, 4.7), v0.10.0 (`--battery-saver`, key e, 4.15), v0.10.1 (battery saver state in the statistics), v0.10.2 (and always in the startup block), v0.11.0 (low battery pauses until charging
-  instead of stopping; warnings every 2 min, 4.15). The release pages of v0.2.0–v0.2.2 were deleted
+  instead of stopping; warnings every 2 min, 4.15), v0.11.1 (unplugging at a low level warned
+  at once; battery read every 30 s there; likes on posts that hide their count no longer undone). The release pages of v0.2.0–v0.2.2 were deleted
   on 2026-10-22 (superseded; nobody depended on them) and the one of v0.5.0 on 2026-10-23
   (superseded by v0.5.1 the same day: its scrolling bug); their **tags are kept** as the record
   of each version. To rebuild an old zip: Actions → windows-release → Run workflow → pick the
@@ -651,9 +652,15 @@ username).
   the tap removed it → tap again to restore, log `⚠ like had been on … restored it`. Only
   works with exact counts ("18.5K" → unknown). Tested offline with a simulated button whose
   signals all lie; never triggered live.
-- **After the tap** (`wait_liked`, up to 3 s, the UI can lag): liked when the flag/label says so
-  or — in the player — the **exact count is one higher** or the **heart is drawn liked twice in
-  a row** (~0.5 s apart). ⚠ *Bug fixed (0.9.1, 2026-10-30):* Instagram stopped flipping the
+- **After the tap** (`wait_liked`, up to 4 s, the UI can lag): liked when the flag/label says so
+  or — in the player — the **exact count is higher** or the **heart is drawn liked** (one
+  reading; twice in a row until 0.11.1). After a tap, *lean to "liked"*: a wrong "liked" only
+  leaves a like out, a wrong "not liked" leads to a second tap that **removes** the like.
+  ⚠ *Bug fixed (0.11.1, 2026-11-01, Instagram 453):* a post that **hides its like count** (no
+  count node at all) left only the heart; on the slow phone one reading fitted into the 3 s
+  window (liked, outline 0.00 white), the second didn't → second tap → the like was removed
+  ("like did not register"; 2 of 6 likes in one run). Now one liked reading is enough, and right
+  before any second tap the count and the heart are looked at once more. ⚠ *Bug fixed (0.9.1, 2026-10-30):* Instagram stopped flipping the
   player's `selected` flag (451, pt-BR: label "Curtir" and `selected=false` stay after a
   like, while the count goes +1 and the heart turns red). Checking only the flag, every like
   looked "not registered" → the **second tap removed it** → runs logged plenty of "♡ like did
@@ -1422,6 +1429,13 @@ mid-run (the app then only saw a lost connection and kept retrying). `Battery` w
 - **In the statistics** (0.10.1, `Player.saver_status`): the battery line ends with the phone's
   battery saver state, read fresh (`settings get global low_power`), "(for this run)" when the
   app set it (option or e) and the run isn't paused.
+- **Unplugging noticed fast** (0.11.1): reported by the owner — unplugged at 18 %, no warning
+  seen. The checks ran every 2 min, so a warning could come up to 2 min after unplugging (the
+  run had started on the charger, quiet). Now, from the warning level on, the battery is read
+  every 30 s (`EVERY_LOW`; one ~0.1 s call), unplugging there warns **at once** (with the bell),
+  and the warning repeats every 2 min (`WARN_EVERY`), not at every 30 s check. Live, battery
+  faked: unplugged at 07:46:36 → `🔌 phone unplugged` + warning at 07:46:53, the next at
+  07:49:14; quiet while on the charger.
 - **Battery pause tested (2026-11-01)**, battery faked, 20 s checks: warnings with the bell at
   every check at 19 %, the pause at 9 % (video paused), a reminder 2 min later, the faked
   charger → "carrying on" 16 s later, the next video played, the pause counted as paused.

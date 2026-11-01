@@ -343,8 +343,9 @@ of videos that hit the time limit (`maxwatch-*.npz`).
   `--battery-saver off` (or key **e** while running) switches it off for the run and back on
   at the end.
 - **Phone battery:** the tool shows it at start and in the statistics (with the battery saver
-  state). When the phone isn't charging it warns from 20 % — every 2 minutes, with the
-  terminal's bell, so it's noticed with the phone away and dimmed — and at 10 % it **pauses**
+  state). When the phone isn't charging it warns from 20 % — at once when you unplug it there,
+  then every 2 minutes, with the terminal's bell, so it's noticed with the phone away and
+  dimmed — and at 10 % it **pauses**
   (before the phone dies mid-run) and **carries on by itself once the charger is plugged in**,
   reminding you every 2 minutes meanwhile; **p** resumes at once, **q** quits.
   `--battery-stop` changes the level, `0` only warns. It also warns at 42 °C and pauses at

@@ -138,6 +138,32 @@ lines.clear()
 p.tap_like(ph, count_kind="like")
 check("hidden like removed: restored", (lines[-1], ph.clicks, ph.liked), ("  ⚠ like had been on (count 100 -> 99); restored it", 2, True))
 
+# the failure of 2026-11-01: a post that hides its like count; after the tap the heart reads
+# liked once, then a bad reading says "not liked" -- liked, and never a second tap
+class HiddenCount(Phone):
+    def dump_hierarchy(self):
+        return "<node />"  # no like count shown
+
+
+ph = HiddenCount(flag=False)
+p = player(ph)
+reads = iter([False, True, False, False, False, False, False, False])  # before the tap: plain; then liked once
+p.heart_looks_liked = lambda bounds: next(reads, False)
+p.is_liked = lambda like, check_icon=True: False
+lines.clear()
+p.tap_like(ph, count_kind="like")
+check("hidden count, one liked reading: liked, one tap", (lines[-1], ph.clicks, ph.liked), ("  ♥ liked", 1, True))
+
+# the heart turns liked only after the waiting window: the last look before a second tap sees it
+ph = HiddenCount(flag=False)
+p = player(ph)
+reads = iter([False] * 8 + [True])
+p.heart_looks_liked = lambda bounds: next(reads, True)
+p.is_liked = lambda like, check_icon=True: False
+lines.clear()
+p.tap_like(ph, count_kind="like")
+check("late heart: liked, no second tap", (lines[-1], ph.clicks), ("  ♥ liked", 1))
+
 if failures:
     print(f"{len(failures)} FAILED:")
     for f in failures:

@@ -8,7 +8,7 @@ nothing to install (no Python, no uv, no git):
   is plugged in (0.11.0; it used to stop), with reminders every 2 minutes (`--battery-stop`). *0.9.0:* about 3.5–4 s less between videos (fewer swipes, shorter
   waits; switching the phone's battery saver off saves ~2 s more). *0.9.1:* likes are counted
   right again — a change on Instagram's side had the tool undo them ("like did not register");
-  refused likes are counted and pause liking. *0.10.0:* `--battery-saver off` (or key **e**) switches the
+  refused likes are counted and pause liking (0.11.1: also on posts that hide their like count). *0.10.0:* `--battery-saver off` (or key **e**) switches the
   phone's battery saver off for the run (it slows the phone down) and back at the end;
 - **`profile_blocker.exe`** *(0.5.0: about twice as fast)* blocks every profile in a list (`profiles.txt`,
   created on its first start), through your blocked accounts list (Bloqueados → +);
