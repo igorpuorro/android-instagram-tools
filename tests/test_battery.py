@@ -82,10 +82,10 @@ def at(level, **kw):
 lines.clear()
 check("64 %: nothing", (at(64), lines), (None, []))
 check("21 %: nothing", (at(21), lines), (None, []))
-check("20 %: warning", (at(20), lines[-2:]), (None, ["BELL", "⚠ phone battery 20% and not charging -- stopping at 10%"]))
+check("20 %: warning", (at(20), lines[-2:]), (None, ["BELL", "⚠ phone battery 20% and not charging -- pausing at 10% until it's charging"]))
 n = len(lines)
-check("19 %: no repeat yet", (at(19), lines[n:]), (None, []))
-check("17 %: repeated", (at(17), lines[-1]), (None, "⚠ phone battery 17% and not charging -- stopping at 10%"))
+check("19 %: warned again at the next check (every 2 min)", (at(19), lines[n:]), (None, ["BELL", "⚠ phone battery 19% and not charging -- pausing at 10% until it's charging"]))
+check("17 %: again", (at(17), lines[-1]), (None, "⚠ phone battery 17% and not charging -- pausing at 10% until it's charging"))
 phone.out = dumpsys(5)
 check("checked at most every 2 min", b.check(), None)
 check("10 %: stop", at(10), "phone battery 10% and not charging")
@@ -100,9 +100,23 @@ check("plug event", lines[-1], "🔌 phone on the charger: battery 9% · chargin
 at(40, status=2, usb=True)
 check("unplugged at 40 %", (at(40), lines[-1]), (None, "🔌 phone unplugged: battery 40% · discharging · 31 °C"))
 check("after charging: warns again at 20 %", (at(20), lines[-1]),
-      (None, "⚠ phone battery 20% and not charging -- stopping at 10%"))
+      (None, "⚠ phone battery 20% and not charging -- pausing at 10% until it's charging"))
 check("forced check works between intervals", (phone.__setattr__("out", dumpsys(8)), b.check(force=True))[1],
       "phone battery 8% and not charging")
+
+# recovered(): when a battery pause may end
+phone = Phone()
+b = fa.Battery(lambda: phone)
+phone.out = dumpsys(9)
+check("9 %, not charging: stay paused", b.recovered(), False)
+phone.out = dumpsys(9, status=2, usb=True)
+check("9 %, charging: resume", b.recovered(), True)
+phone.out = dumpsys(80, status=2, ac=True, temp=430)
+check("43 °C on the charger: stay paused", b.recovered(), False)
+phone.out = dumpsys(80, status=2, ac=True, temp=395)
+check("39.5 °C: resume", b.recovered(), True)
+phone.out = None
+check("unreadable: stay paused", b.recovered(), False)
 
 # --battery-stop 0: warnings only, from 20 %
 phone = Phone()
@@ -121,13 +135,13 @@ check("stop 30, 30 %: stop", at(30), "phone battery 30% and not charging")
 phone = Phone()
 b = fa.Battery(lambda: phone)
 lines.clear()
-check("42 °C: warning", (at(80, temp=420), lines[-1]), (None, "⚠ phone battery hot: 42 °C (stopping at 45 °C)"))
+check("42 °C: warning", (at(80, temp=420), lines[-1]), (None, "⚠ phone battery hot: 42 °C (pausing at 45 °C)"))
 n = len(lines)
 check("43 °C: no repeat", (at(80, temp=430), lines[n:]), (None, []))
 at(80, temp=390)
 check("cooled, 42 °C again: warning", (at(80, temp=420), lines[-1]),
-      (None, "⚠ phone battery hot: 42 °C (stopping at 45 °C)"))
-check("45 °C on the charger: stop", at(80, status=2, ac=True, temp=450), "phone battery at 45 °C")
+      (None, "⚠ phone battery hot: 42 °C (pausing at 45 °C)"))
+check("45 °C on the charger: pause", at(80, status=2, ac=True, temp=450), "phone battery at 45 °C")
 
 # a phone that can't be read: no stop, no crash
 phone.out = None
@@ -247,6 +261,78 @@ p.saver.hold()
 check("stats: while paused (the phone's own)", p.saver_status(), " · battery saver on")
 bad = types.SimpleNamespace(window_size=lambda: (1080, 2340), shell=lambda cmd: (_ for _ in ()).throw(RuntimeError("offline")))
 check("stats: unreadable -> nothing", fa.Player(bad, _ap.Namespace(play="all"), None).saver_status(), "")
+
+# --- the battery pause: waits for the charger, reminders, p / q -----------------------------
+class Clock2:
+    def __init__(self):
+        self.now = 50000.0
+
+    def time(self):
+        return self.now
+
+    def sleep(self, s):
+        self.now += s
+
+
+clock2 = Clock2()
+fa.time = types.SimpleNamespace(time=clock2.time, sleep=clock2.sleep, strftime=lambda *a: "00:00",
+                                localtime=lambda *a: None)
+
+
+class PhoneOnCharger(Phone):
+    """At 9 %, not charging; plugged in once `plug_at` (clock time) has passed."""
+    def __init__(self, plug_at):
+        super().__init__()
+        self.plug_at = plug_at
+
+    def shell(self, cmd):
+        if cmd == "dumpsys battery":
+            plugged = clock2.now >= self.plug_at
+            return types.SimpleNamespace(output=dumpsys(9, status=2 if plugged else 3, usb=plugged))
+        return types.SimpleNamespace(output="")
+
+
+def battery_player(phone, keys=()):
+    dev = types.SimpleNamespace(window_size=lambda: (1080, 2340), shell=phone.shell)
+    import argparse
+    p = fa.Player(dev, argparse.Namespace(play="all"), None)
+    queue = list(keys)
+    p.keys = types.SimpleNamespace(get=lambda: (queue.pop(0)[1] if queue and clock2.now >= queue[0][0] else None))
+    p.brightness.hold = lambda: lines.append("BRIGHTNESS HANDED BACK")
+    p.saver.hold = lambda: lines.append("SAVER HANDED BACK")
+    return p
+
+
+start = clock2.now
+p = battery_player(PhoneOnCharger(plug_at=start + 300))
+lines.clear()
+try:
+    p.pause(battery="phone battery 9% and not charging")
+    got = "returned"
+except fa.Resumed:
+    got = "resumed"
+check("charger after 5 min: resumes by itself", got, "resumed")
+check("waited ~5 min", round((clock2.now - start) / 60), 5)
+check("first line", lines[0], "⏸ paused: phone battery 9% and not charging -- resumes by itself when it's charging (p resumes now, q quits)")
+check("reminders every 2 min, with the bell", sum(1 for x in lines if x.startswith("⏸ still paused")), 2)
+check("carrying on", any(x.startswith("🔌 battery 9% · charging (USB)") for x in lines), True)
+check("brightness / battery saver kept", any("HANDED BACK" in x for x in lines), False)
+check("counted as paused", round(p.waited["paused"] / 60), 5)
+
+p = battery_player(PhoneOnCharger(plug_at=clock2.now + 10**6), keys=[(clock2.now + 45, "p")])
+try:
+    p.pause(battery="phone battery 9% and not charging")
+except fa.Resumed:
+    pass
+check("p resumes at once", round(p.waited["paused"]), 45)
+
+p = battery_player(PhoneOnCharger(plug_at=clock2.now + 10**6), keys=[(clock2.now + 20, "q")])
+try:
+    p.pause(battery="phone battery 9% and not charging")
+    got = None
+except fa.Quit:
+    got = "quit"
+check("q quits", got, "quit")
 
 if failures:
     print(f"{len(failures)} FAILED:")

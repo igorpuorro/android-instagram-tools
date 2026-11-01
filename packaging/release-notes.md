@@ -4,8 +4,8 @@ nothing to install (no Python, no uv, no git):
   at 2x, liking / commenting / reposting / copying links / saving them. *0.7.0:* the comment
   can come from a script, a different one per video — `--comment-script comment_greeting.bat`
   (in the folder: a greeting for the time of day; edit its texts with Notepad). *0.8.0:* it
-  watches the phone's battery — warns, and stops cleanly at 10 % when not charging
-  (`--battery-stop`). *0.9.0:* about 3.5–4 s less between videos (fewer swipes, shorter
+  watches the phone's battery — warns, and at 10 % when not charging pauses until the charger
+  is plugged in (0.11.0; it used to stop), with reminders every 2 minutes (`--battery-stop`). *0.9.0:* about 3.5–4 s less between videos (fewer swipes, shorter
   waits; switching the phone's battery saver off saves ~2 s more). *0.9.1:* likes are counted
   right again — a change on Instagram's side had the tool undo them ("like did not register");
   refused likes are counted and pause liking. *0.10.0:* `--battery-saver off` (or key **e**) switches the

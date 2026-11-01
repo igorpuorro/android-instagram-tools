@@ -8,7 +8,7 @@
 --2x                     # play at 2x speed (key x switches it during a run)
 # --max-watch 300        # stop watching a video after this many seconds
 # --brightness 30        # phone screen brightness at start (keys < > change it while running)
-# --battery-stop 10      # stop when the phone's battery is this low and not charging (0 = only warn)
+# --battery-stop 10      # pause when the battery is this low and not charging, carry on when charging (0 = only warn)
 # --battery-saver off    # battery saver off during the run (faster); yours comes back at the end
 
 # actions on videos watched to the end: none, followed or all

@@ -292,7 +292,7 @@ The main ones (all of them: `--help`):
 | `--save` | **none** · followed · all | save them to your private Saved collection |
 | `--max-watch S` | **300** | stop watching a video after S seconds |
 | `--battery-saver` | **keep** · off · on | the phone's battery saver during the run (`off` makes it faster); key **e** switches it while running; your own setting comes back at the end and while paused |
-| `--battery-stop PERCENT` | **10** | stop cleanly when the phone's battery is this low and not charging (warnings from 10 % above; `0` = warnings only) |
+| `--battery-stop PERCENT` | **10** | pause when the phone's battery is this low and not charging, and carry on by itself once it's charging (warnings every 2 min from 10 % above; `0` = warnings only) |
 | `--brightness PERCENT` | (unchanged) | phone screen brightness at start, 1–100 (keys **<** **>** change it; the phone's own is restored at the end) |
 
 "followed" = only for accounts you follow. Actions happen only for videos watched to the end, in
@@ -343,10 +343,12 @@ of videos that hit the time limit (`maxwatch-*.npz`).
   `--battery-saver off` (or key **e** while running) switches it off for the run and back on
   at the end.
 - **Phone battery:** the tool shows it at start and in the statistics (with the battery saver
-  state). When the phone isn't
-  charging it warns from 20 % (with the terminal's bell) and stops cleanly at 10 % — before
-  the phone dies mid-run; `--battery-stop` changes the level, `0` only warns. It also warns at
-  42 °C and stops at 45 °C.
+  state). When the phone isn't charging it warns from 20 % — every 2 minutes, with the
+  terminal's bell, so it's noticed with the phone away and dimmed — and at 10 % it **pauses**
+  (before the phone dies mid-run) and **carries on by itself once the charger is plugged in**,
+  reminding you every 2 minutes meanwhile; **p** resumes at once, **q** quits.
+  `--battery-stop` changes the level, `0` only warns. It also warns at 42 °C and pauses at
+  45 °C until it's below 40 °C.
 
 - **Comments are public and under your name.** The same text on many posts looks like spam to
   Instagram: prefer `--comment followed`. If Instagram refuses a comment, the tool pauses

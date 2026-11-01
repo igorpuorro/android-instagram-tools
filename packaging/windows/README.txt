@@ -85,8 +85,9 @@ first start sets play all, 2x, and like, repost, copy link and save all)
   --brightness PERCENT           phone screen brightness at start, 1-100 (default: unchanged)
   --battery-saver keep|off|on    the phone's battery saver during the run (off = faster);
                                  yours comes back at the end (default keep: unchanged)
-  --battery-stop PERCENT         stop when the phone's battery is this low and not charging
-                                 (default 10, warnings from 20; 0 = warnings only)
+  --battery-stop PERCENT         pause when the phone's battery is this low and not
+                                 charging, and carry on once it's charging (default 10,
+                                 warnings every 2 min from 20; 0 = warnings only)
 All options: feed_autoplay.exe --help
 
 

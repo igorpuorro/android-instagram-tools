@@ -33,7 +33,7 @@ Contents
    - 4.12 [Languages](#412-languages) — English and Brazilian Portuguese
    - 4.13 [Screen brightness](#413-screen-brightness) — keys < >, `--brightness`
    - 4.14 [profile_blocker](#414-profile_blocker) — the second tool: block / unblock a list of profiles
-   - 4.15 [Phone battery](#415-phone-battery) — warnings, a clean stop when low, `--battery-stop`
+   - 4.15 [Phone battery](#415-phone-battery) — warnings, a pause until charging when low, `--battery-stop`
    - 4.16 [Time between videos](#416-time-between-videos) — what it costs and what made it shorter
 5. [How things were tested (and how to re-test)](#5-how-things-were-tested-and-how-to-re-test)
 6. [Known limitations and ideas](#6-known-limitations-and-ideas)
@@ -79,7 +79,7 @@ all use.
 | | `--save none\|followed\|all` | `none` | which get saved (to your private Saved collection) |
 | **device** | `-s`, `--serial SERIAL` | auto | adb serial; only needed with several *different* phones |
 | | `--battery-saver keep\|off\|on` | `keep` | the phone's battery saver for the run; its own setting back at the end and while paused (4.15) |
-| | `--battery-stop PERCENT` | 10 | stop cleanly at this battery level when not charging, warnings from +10 %; 0 = warnings only (4.15) |
+| | `--battery-stop PERCENT` | 10 | pause at this battery level when not charging, carry on once charging; warnings every 2 min from +10 %; 0 = warnings only (4.15) |
 | **advanced tuning** | `--no-log` | (log on) | end-of-video by frame comparison only |
 | | `--ref-start`, `--loop-thresh`, `--loop-rel` | per-speed profile | override the frame-comparison profile (see 4.5) |
 | | `--move-thresh`, `--min-watch` | 12 / 3 | frame-comparison tuning (see 4.5) |
@@ -110,12 +110,12 @@ At startup the app prints a block with the phone, the Instagram version, the set
 phone's battery:
 
 ```
-── feed_autoplay 0.10.2 ─────────────────────────────────────────
+── feed_autoplay 0.11.0 ─────────────────────────────────────────
    phone      Samsung SM-A515F · Android 11 · serial R58N91XKQZT · Wi-Fi
    instagram  451.0.0.53.80
    playback   play all · 2x on · max 300 s per video
    actions    like all · comment none · repost followed · copy link none · save none
-   battery    64% · discharging · 31 °C · stops at 10% unless charging · battery saver off
+   battery    64% · discharging · 31 °C · pauses at 10% until charging · battery saver off
    end        Instagram's log + frame comparison
    keys       press h for help
 ────────────────────────────────────────────────────────────────
@@ -233,7 +233,8 @@ and gets fewer antivirus false alarms.
   scrolling to Blocked (`UiObjectNotFoundError` in 0.5.0), unblocking through the list), v0.6.0
   (comments, `--comment-text`, 4.7e), v0.7.0 (`--comment-script` + `comment_greeting.bat`, 4.7e), v0.8.0 (phone battery,
   `--battery-stop`, 4.15), v0.9.0 (shorter time between videos, 4.16), v0.9.1 (likes confirmed by count and icon — a
-  second tap had been removing them; like refusals counted and paused, 4.7), v0.10.0 (`--battery-saver`, key e, 4.15), v0.10.1 (battery saver state in the statistics), v0.10.2 (and always in the startup block). The release pages of v0.2.0–v0.2.2 were deleted
+  second tap had been removing them; like refusals counted and paused, 4.7), v0.10.0 (`--battery-saver`, key e, 4.15), v0.10.1 (battery saver state in the statistics), v0.10.2 (and always in the startup block), v0.11.0 (low battery pauses until charging
+  instead of stopping; warnings every 2 min, 4.15). The release pages of v0.2.0–v0.2.2 were deleted
   on 2026-10-22 (superseded; nobody depended on them) and the one of v0.5.0 on 2026-10-23
   (superseded by v0.5.1 the same day: its scrolling bug); their **tags are kept** as the record
   of each version. To rebuild an old zip: Actions → windows-release → Run workflow → pick the
@@ -1392,13 +1393,20 @@ mid-run (the app then only saw a lost connection and kept retrying). `Battery` w
 - **When:** `Player.check_battery()` between videos and inside the watch loop, at most every
   `Battery.EVERY` = 120 s (the first time right at start). The statistics block (every 20
   videos, **s**, the end) reads it fresh: `battery  64% · discharging · 31 °C`.
-- **Not on a charger:** a warning and the terminal bell at `--battery-stop` + 10 % (default
-  20 %), repeated every 3 % lower; at `--battery-stop` % (default 10) the run stops like **q**
-  (`Quit`: final statistics, brightness restored) with `⏹ stopping: phone battery 9% and not
-  charging`. `--battery-stop 0` = warnings only (from 20 %). Any "powered" source counts as on
-  the charger — no warnings, no stop; plugging in / out is logged (`🔌`), and warnings start
-  over after charging.
-- **Heat:** a warning at 42 °C (again only after cooling below 40 °C), a stop at 45 °C — also
+- **Not on a charger:** a warning and the terminal bell from `--battery-stop` + 10 % (default
+  20 %) **at every check** — every 2 min (until 0.10: once, then every 3 % lower; too rare to
+  notice with the phone away and dimmed). At `--battery-stop` % (default 10) the run **pauses**
+  (`Player.pause(battery=…)`; until 0.10 it stopped like **q**): the video is paused, nothing
+  else is touched, `Battery.recovered()` is checked every 30 s and the run **carries on by
+  itself once the phone is charging** (`🔌 battery 9% · charging (USB) …: carrying on`); a
+  reminder with the bell every 2 min; **p** resumes at once, **q** quits. The run's brightness
+  and battery saver stay during it (the user's own brightness would drain the battery faster).
+  Without Stay awake (not charging) the screen goes dark meanwhile, so the paused video can't be
+  confirmed untouched and is left on resume; a locked phone is waited for as usual.
+  `--battery-stop 0` = warnings only (from 20 %). Any "powered" source counts as on the
+  charger — no warnings, no pause; plugging in / out is logged (`🔌`).
+- **Heat:** a warning at 42 °C (again only after cooling below 40 °C), a pause at 45 °C until it's
+  below 40 °C (until 0.10 a stop) — also
   on a charger (long runs heat the phone; heat ages the battery).
 - **The bell** (`\a`) only goes to a terminal (`isatty`), never into a log file. Desktop
   notifications were left out: they need different tools per system.
@@ -1414,6 +1422,11 @@ mid-run (the app then only saw a lost connection and kept retrying). `Battery` w
 - **In the statistics** (0.10.1, `Player.saver_status`): the battery line ends with the phone's
   battery saver state, read fresh (`settings get global low_power`), "(for this run)" when the
   app set it (option or e) and the run isn't paused.
+- **Battery pause tested (2026-11-01)**, battery faked, 20 s checks: warnings with the bell at
+  every check at 19 %, the pause at 9 % (video paused), a reminder 2 min later, the faked
+  charger → "carrying on" 16 s later, the next video played, the pause counted as paused.
+  Offline: warnings at every check, `recovered()` (charging, cooling, unreadable), the pause
+  resuming by itself, reminders every 2 min, brightness / battery saver kept, p, q.
 - **Battery saver tested (2026-10-30)** with the phone's own setting on: `--battery-saver off` →
   off while running, on while paused, off after resume, on after q; key e from keep: off, on
   (yours) while paused, e while paused "applied when resumed", e again → off, q → on. Offline:

@@ -42,7 +42,7 @@ import time
 import traceback
 from pathlib import Path
 
-__version__ = "0.10.2"  # same as pyproject.toml; the Windows release tag is v<version>
+__version__ = "0.11.0"  # same as pyproject.toml; the Windows release tag is v<version>
 
 WINDOWS = os.name == "nt"
 # Running as the Windows app built by PyInstaller (packaging/, DEVELOPMENT.md 1): the bundled
@@ -543,10 +543,11 @@ class Battery:
     """Watches the phone's battery between videos (DEVELOPMENT.md 4.15): with the phone away and
     the screen dimmed, a low battery goes unnoticed until the phone dies mid-run.
 
-    Not on a charger: a warning (plus the terminal bell) at `stop` + 10 %, again every 3 %
-    lower, and at `stop` % a clean stop -- like q: final statistics, brightness restored.
-    stop 0 = warnings only. Charger plugged in / out is logged. Heat: a warning at 42 °C, a
-    stop at 45 °C (also on a charger). One `dumpsys battery` call (~0.1 s) at most every 2 min."""
+    Not on a charger: a warning (plus the terminal bell) at every check from `stop` + 10 % --
+    every 2 min, so it's noticed with the phone away and dimmed -- and at `stop` % the run
+    pauses until the charger is plugged in (Player.check_battery). stop 0 = warnings only.
+    Charger plugged in / out is logged. Heat: a warning at 42 °C, a pause at 45 °C until it's
+    below 40 °C (also on a charger). One `dumpsys battery` call (~0.1 s) at most every 2 min."""
 
     EVERY = 120          # seconds between checks
     HOT, TOO_HOT = 42, 45  # °C
@@ -555,7 +556,6 @@ class Battery:
         self.device = device  # callable: the current uiautomator2 device (it changes on reconnect)
         self.stop = stop
         self.warn = stop + 10 if stop else 20
-        self.next_warn = self.warn
         self.last = None      # last reading
         self.checked = 0.0
         self.hot = False
@@ -577,24 +577,31 @@ class Battery:
             return None
         if before and bool(before["plugged"]) != bool(b["plugged"]):
             log(f"🔌 phone {'on the charger' if b['plugged'] else 'unplugged'}: battery {describe_battery(b)}")
-        if b["plugged"]:
-            self.next_warn = self.warn  # warnings start over after charging
-        else:
+        if not b["plugged"]:
             if self.stop and b["level"] <= self.stop:
                 return f"phone battery {b['level']}% and not charging"
-            if b["level"] <= self.next_warn:
+            if b["level"] <= self.warn:  # at every check: regular, with the bell
                 bell()
-                stop = f" -- stopping at {self.stop}%" if self.stop else ""
+                stop = f" -- pausing at {self.stop}% until it's charging" if self.stop else ""
                 log(f"⚠ phone battery {b['level']}% and not charging{stop}")
-                self.next_warn = b["level"] - 3
         if b["temp"] is not None:
             if b["temp"] >= self.TOO_HOT:
                 return f"phone battery at {b['temp']:.0f} °C"
             if b["temp"] >= self.HOT and not self.hot:
                 bell()
-                log(f"⚠ phone battery hot: {b['temp']:.0f} °C (stopping at {self.TOO_HOT} °C)")
+                log(f"⚠ phone battery hot: {b['temp']:.0f} °C (pausing at {self.TOO_HOT} °C)")
             self.hot = b["temp"] >= self.HOT - 2 if self.hot else b["temp"] >= self.HOT
         return None
+
+    def recovered(self):
+        """While paused for the battery: on a charger (or above the pause level) and below
+        40 °C -- time to resume."""
+        b = self.now()
+        if not b:
+            return False
+        charged = not self.stop or bool(b["plugged"]) or b["level"] > self.stop
+        cool = b["temp"] is None or b["temp"] < self.HOT - 2
+        return charged and cool
 
 
 class BatterySaver:
@@ -864,13 +871,13 @@ class Player:
         return k if k == "n" else None
 
     def check_battery(self):
-        """Between videos and while one plays (at most every Battery.EVERY s): stop cleanly
-        when the battery is too low or too hot (Quit: statistics, brightness restored)."""
+        """Between videos and while one plays (at most every Battery.EVERY s): when the battery
+        is too low (not charging) or too hot, pause until it's charging / cooled down, then
+        carry on by itself (until 0.10.2 the run stopped there)."""
         why = self.battery.check()
         if why:
             bell()
-            log(f"⏹ stopping: {why}")
-            raise Quit
+            self.pause(battery=why)
 
     def poll(self):
         """The keys and the stop file that work everywhere, paused or not; returns the key
@@ -910,7 +917,9 @@ class Player:
             self.help()
         return k
 
-    def pause(self, by_file):
+    BATTERY_REMIND = 120  # s: reminder (with the bell) while paused for the battery
+
+    def pause(self, by_file=False, battery=None):
         """Hand the phone over: pause the video if the full-screen player is playing it, then
         leave the phone alone -- no taps, swipes or screen reads -- until resumed with p (or,
         when paused by the file, until runs/PAUSE is deleted). Instagram's end-of-video log
@@ -919,7 +928,12 @@ class Player:
         On resume nothing is tapped blindly: the video is resumed in place only if the same
         video is still open and paused at the same frame (nobody touched it); otherwise the
         current video is dropped (no like/comment/repost/link/save) and Resumed is raised, which takes
-        the run back to the Home feed."""
+        the run back to the Home feed.
+
+        battery: why the battery made the run pause (Player.check_battery): it resumes by itself
+        once the phone is charging / cooled down (checked every 30 s, a reminder with the bell
+        every 2 min); p resumes at once, q quits. The run's brightness and battery saver stay
+        (the user's own brightness would drain the battery faster)."""
         t0 = self.pause_start = time.time()
         ref = None
         if self.context == "player":
@@ -929,15 +943,31 @@ class Player:
                 ref = (self.player_author(), self.frame(self.player_box()))
             except Exception:  # can't tell later whether it's unchanged: start over on resume
                 ref = None
-        self.brightness.hold()  # the phone's own brightness while it is the user's
-        self.saver.hold()       # and its own battery saver setting
-        how = f"delete {PAUSE_FILE} to resume" if by_file else "p to resume"
-        log(f"⏸ paused: the phone is yours ({how})")
+        if battery:
+            log(f"⏸ paused: {battery} -- resumes by itself when "
+                + ("it's charging" if "charging" in battery else "it has cooled down")
+                + " (p resumes now, q quits)")
+        else:
+            self.brightness.hold()  # the phone's own brightness while it is the user's
+            self.saver.hold()       # and its own battery saver setting
+            how = f"delete {PAUSE_FILE} to resume" if by_file else "p to resume"
+            log(f"⏸ paused: the phone is yours ({how})")
+        checked = reminded = time.time()
         try:
             while True:
                 k = self.poll()  # q, stop file, modes, stats and help still work
                 if k == "p" or (by_file and not PAUSE_FILE.exists()):
                     break
+                if battery and time.time() - checked >= 30:
+                    checked = time.time()
+                    if self.battery.recovered():
+                        log(f"🔌 battery {describe_battery(self.battery.last)}: carrying on")
+                        break
+                    if time.time() - reminded >= self.BATTERY_REMIND:
+                        reminded = time.time()
+                        bell()
+                        log(f"⏸ still paused: battery {describe_battery(self.battery.last)} "
+                            "-- plug the charger in (p resumes now, q quits)")
                 time.sleep(0.2)
         finally:  # also when quitting while paused: the final statistics count the pause
             t1 = time.time()
@@ -2133,7 +2163,7 @@ def startup_report(d, args, keys_on, settings_from=None):
         saver = d.shell("settings get global low_power").output.strip() == "1"
     except Exception:
         saver = False
-    stop = (f"stops at {args.battery_stop}% unless charging" if args.battery_stop
+    stop = (f"pauses at {args.battery_stop}% until charging" if args.battery_stop
             else "warnings only (--battery-stop 0)")
     if args.battery_saver == "keep":
         saver_text = (" · battery saver on ⚠ (can slow the phone; --battery-saver off or key e)" if saver
@@ -2466,8 +2496,9 @@ def main():
     g = p.add_argument_group("device")
     g.add_argument("-s", "--serial", help="adb device serial (default: the only connected device)")
     g.add_argument("--battery-stop", type=battery_percent, default=10, metavar="PERCENT",
-                   help="stop cleanly when the phone's battery is down to PERCENT and not charging, "
-                        "with warnings from PERCENT+10 (default 10; 0 = warnings only, from 20%%)")
+                   help="pause when the phone's battery is down to PERCENT and not charging, and "
+                        "carry on by itself once it's charging; warnings every 2 min from "
+                        "PERCENT+10 (default 10; 0 = warnings only, from 20%%)")
 
     g = p.add_argument_group("advanced tuning (end-of-video detection, feed scrolling; DEVELOPMENT.md 4.5)")
     g.add_argument("--no-log", dest="use_log", action="store_false",
