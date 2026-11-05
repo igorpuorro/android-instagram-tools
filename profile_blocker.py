@@ -37,6 +37,7 @@ from pathlib import Path
 # shared with feed_autoplay until the shared package exists (DEVELOPMENT.md 3)
 import feed_autoplay as fa
 from feed_autoplay import (APP_DIR, BUNDLE_DIR, FROZEN, PAUSE_FILE, PKG, REFUSED, RUNS, STOP_FILE,
+                           parse_profiles,
                            WINDOWS, Keys, Quit, log,
                            log_block_end, pick_serial, u2)
 
@@ -61,7 +62,6 @@ PROFILES_FILE = APP_DIR / "profiles.txt"  # the Windows app's list, when started
 DONE_LOG = RUNS / "blocked-profiles.txt"  # one line per profile handled: time, name, outcome
 # latest outcomes that make a later run skip the profile (unless --recheck), per mode
 DONE = {"block": ("blocked", "already blocked"), "unblock": ("unblocked", "not blocked")}
-USERNAME = re.compile(r"[A-Za-z0-9._]{1,30}")
 # pause after Instagram refuses a block (rate limit): 30 min, doubling per refusal
 REFUSED_BACKOFF_MIN, REFUSED_BACKOFF_MAX = 30, 240
 
@@ -69,24 +69,6 @@ REFUSED_BACKOFF_MIN, REFUSED_BACKOFF_MAX = 30, 240
 def exact(key):
     """Regex matching any language's text for `key` exactly."""
     return "^(" + "|".join(re.escape(t) for t in UI_TEXT[key]) + ")$"
-
-
-def parse_profiles(lines):
-    """(usernames in list order without duplicates, [(line number, line) not understood])."""
-    names, bad, seen = [], [], set()
-    for n, line in enumerate(lines, 1):
-        s = line.split("#", 1)[0].strip()
-        if not s:
-            continue
-        m = re.match(r"(?:https?://)?(?:www\.|m\.)?instagram\.com/([^/?#\s]+)", s)
-        s = m.group(1) if m else s.lstrip("@")
-        if not USERNAME.fullmatch(s):
-            bad.append((n, line.rstrip()))
-            continue
-        if s.lower() not in seen:
-            seen.add(s.lower())
-            names.append(s)
-    return names, bad
 
 
 def done_before(mode, path=None):

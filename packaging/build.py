@@ -28,9 +28,9 @@ WINDOWS = os.name == "nt"
 PLATFORM = "windows" if WINDOWS else "linux"
 # files next to the exes (Windows only: connect.bat, disconnect.bat, unblock.bat,
 # comment_greeting.bat, README.txt);
-# settings.txt and profiles.txt are bundled instead: the apps create them on first start, so
-# updates keep the user's own
-CREATED = ("settings.txt", "profiles.txt")
+# settings.txt, profiles.txt and skip-profiles.txt are bundled instead: the apps create them on
+# first start, so updates keep the user's own
+CREATED = ("settings.txt", "profiles.txt", "skip-profiles.txt")
 EXTRAS = sorted(f for f in (ROOT / "packaging" / "windows").iterdir() if f.name not in CREATED)
 # must never be in the bundle (private data, see .gitignore)
 FORBIDDEN = re.compile(r"(^|/)(runs|\.env|traces|traces_1x|icon_samples|\.git)(/|$)")

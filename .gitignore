@@ -58,3 +58,6 @@ desktop.ini
 
 # the Windows app build (packaging/build.py)
 build/
+
+# your own skip list for feed_autoplay (personal)
+/skip-profiles.txt

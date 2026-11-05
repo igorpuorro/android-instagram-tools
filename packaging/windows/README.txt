@@ -51,6 +51,7 @@ Keys while it runs (in its window):
   < > phone screen dimmer / brighter (your own brightness comes back at the end)
   a   your own brightness again now (adaptive if it was)
   e   battery saver off / on (faster when off; yours comes back at the end)
+  u   reload skip-profiles.txt (after editing it; it's also read again by itself)
   s statistics    h / ? help     q quit
 
 Using the phone in between: press p, use the phone, press p again. q stops it: the final
@@ -82,6 +83,7 @@ first start sets play all, 2x, and like, repost, copy link and save all)
   --share-link none|followed|all Share > Copy link (default none)
   --save none|followed|all       save to your private Saved collection (default none)
   --max-watch S                  stop watching a video after S seconds (default 300)
+  --skip-profiles FILE           profiles whose videos are skipped (default skip-profiles.txt)
   --brightness PERCENT           phone screen brightness at start, 1-100 (default: unchanged)
   --battery-saver keep|off|on    the phone's battery saver during the run (off = faster);
                                  yours comes back at the end (default keep: unchanged)
@@ -118,6 +120,14 @@ Xiaomi, Redmi, POCO (HyperOS / MIUI) -- if the app stops right at start with
    account and turn mobile data on, then try again.
 3. Switch on "Install via USB".
 4. Unplug and replug the USB cable, accept the prompt on the phone, start feed_autoplay again.
+
+
+Skip list
+---------
+skip-profiles.txt next to feed_autoplay.exe (created with examples on the first start): the
+profiles whose videos are skipped without playing -- no 2x, no like or other action. One per
+line: name, @name or the profile's link; "#" starts a comment. Edit it with Notepad while the
+app runs: it's read again by itself at the next post, and the u key reloads it at once.
 
 
 Troubleshooting

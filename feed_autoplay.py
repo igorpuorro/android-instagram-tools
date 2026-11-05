@@ -17,7 +17,8 @@ Keys while running (h shows them):
   n = next video  p = pause (hand the phone over) / resume  x = 2x on/off  w = play mode
   l = like mode  m = comment mode  r = repost mode  c = copy-link mode  b = save mode
   < > = phone brightness
-  a = the phone's own brightness again  e = battery saver off/on  s = statistics  q = quit
+  a = the phone's own brightness again  e = battery saver off/on  u = reload the skip list
+  s = statistics  q = quit
 Without keys (background runs): create the file runs/STOP to stop cleanly; while the file
 runs/PAUSE exists the run is paused.
 
@@ -29,6 +30,7 @@ disconnect (end the connections and stop adb), adb <arguments> (the bundled adb)
 check (are all bundled files there?).
 """
 import argparse
+import functools
 import importlib.resources
 import os
 import re
@@ -42,7 +44,7 @@ import time
 import traceback
 from pathlib import Path
 
-__version__ = "0.11.1"  # same as pyproject.toml; the Windows release tag is v<version>
+__version__ = "0.12.0"  # same as pyproject.toml; the Windows release tag is v<version>
 
 WINDOWS = os.name == "nt"
 # Running as the Windows app built by PyInstaller (packaging/, DEVELOPMENT.md 1): the bundled
@@ -213,6 +215,88 @@ SAVE_MODES = ["none", "followed", "all"]
 COMMENT_MODES = ["none", "followed", "all"]
 # every commented post (date, post identity, header): a later run doesn't comment it again
 COMMENTED = RUNS / "commented.txt"
+# profiles whose videos are skipped without playing (--skip-profiles; DEVELOPMENT.md 4.17)
+SKIP_FILE = APP_DIR / "skip-profiles.txt"
+USERNAME = re.compile(r"[A-Za-z0-9._]{1,30}")
+
+
+def parse_profiles(lines):
+    """(usernames in list order without duplicates, [(line number, line) not understood]).
+    One per line: name, @name or the profile's link; "#" starts a comment (also used by
+    profile_blocker)."""
+    names, bad, seen = [], [], set()
+    for n, line in enumerate(lines, 1):
+        s = line.split("#", 1)[0].strip()
+        if not s:
+            continue
+        m = re.match(r"(?:https?://)?(?:www\.|m\.)?instagram\.com/([^/?#\s]+)", s)
+        s = m.group(1) if m else s.lstrip("@")
+        if not USERNAME.fullmatch(s):
+            bad.append((n, line.rstrip()))
+            continue
+        if s.lower() not in seen:
+            seen.add(s.lower())
+            names.append(s)
+    return names, bad
+
+
+@functools.lru_cache(maxsize=8)
+def load_skip_list(path, mtime_ns, size):
+    """The skip list's names (lower case, frozenset) and its lines not understood -- parsed once
+    per version of the file: the cache key includes its modification time and size, so a check
+    per post costs one os.stat(), and an edited file is read again by itself."""
+    try:
+        names, bad = parse_profiles(Path(path).read_text(encoding="utf-8-sig").splitlines())
+    except OSError:
+        return frozenset(), ()
+    return frozenset(n.lower() for n in names), tuple(bad)
+
+
+class SkipList:
+    """Profiles whose videos are skipped without playing (--skip-profiles, key u)."""
+
+    def __init__(self, path):
+        self.path = Path(path)
+        self.names, self.bad, self.version = frozenset(), (), None
+
+    def refresh(self, force=False):
+        """Up to date with the file (cheap: os.stat; parsed again only when it changed).
+        Returns True when it was (re)loaded."""
+        try:
+            st = self.path.stat()
+            version = (st.st_mtime_ns, st.st_size)
+        except OSError:
+            version = None
+        if version == self.version and not force:
+            return False
+        if force:
+            load_skip_list.cache_clear()
+        self.version = version
+        self.names, self.bad = load_skip_list(str(self.path), *version) if version else (frozenset(), ())
+        return True
+
+    def authors(self, desc):
+        """The account names in a feed post header ("a posted a video ...", "a and b posted ...",
+        "a e mais 2 postou ...")."""
+        low = desc.lower()
+        cut = min((low.find(t.lower()) for t in UI_TEXT["video_post"] if t.lower() in low), default=-1)
+        head = desc[:cut] if cut > 0 else desc.split(" ", 1)[0]
+        return [w for w in re.split(r"\s+(?:and|e)\s+", head.strip()) if USERNAME.fullmatch(w)]
+
+    def match(self, desc):
+        """The listed author of this post, or None."""
+        if not self.names:
+            return None
+        return next((a for a in self.authors(desc) if a.lower() in self.names), None)
+
+    def describe(self):
+        if self.version is None:
+            return f"none ({self.path.name} not found)"
+        n = len(self.names)
+        text = f"{n} profile{'s' if n != 1 else ''} ({self.path.name})"
+        if self.bad:
+            text += f" · {len(self.bad)} line(s) not understood: " + ", ".join(str(n) for n, _ in self.bad[:5])
+        return text
 COMMENT_MAX = 2200  # Instagram's longest comment (characters)
 COMMENT_SCRIPT_TIMEOUT = 15  # seconds a --comment-script may take
 
@@ -721,6 +805,8 @@ class Player:
         self.keys = keys
         self.ends = ends  # EndWatcher, or None to rely on frame comparison only
         self.brightness = Brightness(lambda: self.d)
+        self.skip_list = SkipList(getattr(args, "skip_profiles", None) or SKIP_FILE)
+        self.skip_list.refresh()
         self.saver = BatterySaver(lambda: self.d, getattr(args, "battery_saver", "keep"))
         self.battery = Battery(lambda: self.d, getattr(args, "battery_stop", 10))
         self.w, self.h = d.window_size()
@@ -733,7 +819,7 @@ class Player:
         self.like_paused_until = 0.0  # set when Instagram refuses a like
         self.like_backoff = REPOST_BACKOFF_MIN
         self.commented = None  # post identities from runs/commented.txt (loaded when first needed)
-        self.stats = dict(played=0, liked=0, like_refused=0, reposted=0, repost_refused=0, commented=0, comment_refused=0, saved=0, links=0, skipped=0, suggested_skipped=0,
+        self.stats = dict(played=0, liked=0, like_refused=0, reposted=0, repost_refused=0, commented=0, comment_refused=0, saved=0, links=0, skipped=0, suggested_skipped=0, auto_skipped=0,
                           end_log=0, end_frames=0, end_static=0, end_max=0, errors=0)
         self.started = time.time()
         self.waited = dict(locked=0.0, reconnect=0.0, paused=0.0)  # idle, excluded from "active" rate
@@ -813,7 +899,8 @@ class Player:
         head = f"── stats after {self.hm(elapsed)}" + (f" (active {self.hm(active)})" if idle >= 60 else "") + " "
         log(head + "─" * max(4, 64 - len(head)))
         log(f"   videos   played {s['played']} · skipped {s['skipped']} · "
-            f"suggested not played {s['suggested_skipped']}")
+            f"suggested not played {s['suggested_skipped']} · auto-skipped {s['auto_skipped']} "
+            f"(skip list: {len(self.skip_list.names)})")
         log(f"   pace     {pace}")
         log(f"            {whole}")
         log(f"   actions  liked {s['liked']} (refused {s['like_refused']}) · commented {s['commented']} (refused {s['comment_refused']}) · "
@@ -919,6 +1006,9 @@ class Player:
             self.brightness.give_back()
         elif k == "e":
             self.saver.toggle()
+        elif k == "u":
+            self.skip_list.refresh(force=True)
+            log(f"skip list reloaded: {self.skip_list.describe()}")
         elif k == "s":
             self.report()
         elif k in ("h", "?"):
@@ -1041,6 +1131,8 @@ class Player:
         log(f"              {own:<45} (adaptive if it was)")
         saver = "e  battery saver".ljust(20) + "off ↔ on"
         log(f"              {saver:<45} now {self.saver.describe()}")
+        skip = "u  skip list".ljust(20) + "reload the file"
+        log(f"              {skip:<45} {len(self.skip_list.names)} profiles now")
         log(f"   actions    {mode('l')}")
         log(f"   (screen    {mode('m')}")
         log(f"    order)    {mode('r')}")
@@ -1218,10 +1310,18 @@ class Player:
         """
         xml = self.d.dump_hierarchy()
         not_followed = [self._y_range(n) for n in self.NOT_FOLLOWED_NODE.findall(xml)]
+        if self.skip_list.refresh():  # the file changed since the last look: read again
+            log(f"skip list reloaded: {self.skip_list.describe()}")
         best = None
         for node in self.HEADER_NODE.findall(xml):
             desc = re.search(r'content-desc="([^"]*)"', node).group(1)
             if not has_any(desc, "video_post") or has_any(desc, "sponsored") or self.is_seen(desc):
+                continue
+            listed = self.skip_list.match(desc)
+            if listed:
+                log(f"⏭ auto-skipped (skip list: {listed}): {desc}")
+                self.stats["auto_skipped"] += 1
+                self.remember(desc)
                 continue
             top, bottom = self._y_range(node)
             followed = not any(top <= y0 < bottom for y0, _ in not_followed)
@@ -2176,6 +2276,9 @@ def startup_report(d, args, keys_on, settings_from=None):
         log(f"   screen     brightness {args.brightness}% (the phone's own is restored at the end)")
     if settings_from:
         log(f"   settings   from {settings_from}")
+    skip = SkipList(args.skip_profiles or SKIP_FILE)
+    skip.refresh()
+    log(f"   skip list  {skip.describe()}")
     try:
         saver = d.shell("settings get global low_power").output.strip() == "1"
     except Exception:
@@ -2474,6 +2577,10 @@ def main():
                    help="lock 2x playback speed for each video (default: normal speed; key x toggles it)")
     g.add_argument("--loops", type=int, default=1, help="how many times to watch each video (default 1)")
     g.add_argument("--max-watch", type=float, default=300, help="max seconds per video (default 300)")
+    g.add_argument("--skip-profiles", type=Path, metavar="FILE",
+                   help="profiles whose videos are skipped without playing, one per line (name, "
+                        "@name or link; # comments) -- default: skip-profiles.txt next to the app; "
+                        "edited while running it's read again by itself, key u reloads it at once")
     g.add_argument("--battery-saver", choices=["keep", "off", "on"], default="keep",
                    help="the phone's battery saver during the run: off (it slows the phone down: "
                         "~2 s more per video measured), on, or keep (default: unchanged); key e "
@@ -2540,6 +2647,13 @@ def main():
         try:
             SETTINGS_FILE.write_bytes((BUNDLE_DIR / "settings.txt").read_bytes())
             print(f"created {SETTINGS_FILE.name} with the default options -- edit it with Notepad")
+        except OSError:
+            pass
+    if FROZEN and not SKIP_FILE.exists():
+        # first start: an example skip list to edit (not in the zip: an update never overwrites it)
+        try:
+            SKIP_FILE.write_bytes((BUNDLE_DIR / "skip-profiles.txt").read_bytes())
+            print(f"created {SKIP_FILE.name} (profiles to skip) -- edit it with Notepad")
         except OSError:
             pass
     if FROZEN and not argv and SETTINGS_FILE.exists():

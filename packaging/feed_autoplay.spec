@@ -23,6 +23,8 @@ datas += collect_data_files("adbutils", includes=["binaries/*"])
 datas += [(str(ROOT / "packaging" / "windows" / "settings.txt"), ".")]
 # profile_blocker's example profiles.txt, created next to the exe on first start (same reason)
 datas += [(str(ROOT / "packaging" / "windows" / "profiles.txt"), ".")]
+# feed_autoplay's example skip-profiles.txt, created next to the exe on first start (same reason)
+datas += [(str(ROOT / "packaging" / "windows" / "skip-profiles.txt"), ".")]
 
 
 def version_info(name):

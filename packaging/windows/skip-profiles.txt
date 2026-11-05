@@ -1,0 +1,8 @@
+# feed_autoplay: profiles whose videos are skipped without playing -- no 2x, no like, comment,
+# repost, link or save. One per line: name, @name or the profile's link
+# (https://www.instagram.com/name/). "#" starts a comment. Edited while the app runs, it is
+# read again by itself at the next post; key u reloads it at once.
+# Replace the examples below with the profiles to skip:
+# some.profile
+# @another_profile
+# https://www.instagram.com/third.profile/

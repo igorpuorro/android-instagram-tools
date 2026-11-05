@@ -291,6 +291,7 @@ The main ones (all of them: `--help`):
 | `--share-link` | **none** · followed · all | Share → Copy link; links collected in `runs/shared-links.txt` |
 | `--save` | **none** · followed · all | save them to your private Saved collection |
 | `--max-watch S` | **300** | stop watching a video after S seconds |
+| `--skip-profiles FILE` | `skip-profiles.txt` next to the tool | profiles whose videos are skipped without playing — see "Skip list" below |
 | `--battery-saver` | **keep** · off · on | the phone's battery saver during the run (`off` makes it faster); key **e** switches it while running; your own setting comes back at the end and while paused |
 | `--battery-stop PERCENT` | **10** | pause when the phone's battery is this low and not charging, and carry on by itself once it's charging (warnings every 2 min from 10 % above; `0` = warnings only) |
 | `--brightness PERCENT` | (unchanged) | phone screen brightness at start, 1–100 (keys **<** **>** change it; the phone's own is restored at the end) |
@@ -318,7 +319,8 @@ there?) — e.g. `uv run feed_autoplay.py connect`; in the Windows app `feed_aut
 | **w** | play mode | **c** | copy-link mode |
 | **<** / **>** | phone screen dimmer / brighter | **b** | save mode |
 | **a** | the phone's own brightness again (adaptive if it was) | **s** | statistics |
-| **e** | battery saver off ↔ on (yours back at the end) | **h** / **?** | help |
+| **e** | battery saver off ↔ on (yours back at the end) | **u** | reload the skip list |
+| **h** / **?** | help | | |
 | | | **q** | quit |
 
 Keys work when the tool runs in a terminal window, not in the background.
@@ -333,10 +335,18 @@ and continues from the Home feed. Paused time doesn't count in the statistics' p
 At start: the phone, the Instagram version, the settings and the phone's battery. While running: one line per video
 and action (`▶` opened, `⏩` 2x, `♥` liked, `💬` commented, `🔁` reposted, `🔗` link, `🔖` saved). Every 20
 videos (and on **s** / when stopping) a statistics block, including the **pace** — how many
-videos an hour to expect. Files go to `runs/`: copied links (`shared-links.txt`), commented posts (`commented.txt`) and diagnostics
+videos an hour to expect. The startup block and the statistics also show the skip list's size and how many videos it
+skipped. Files go to `runs/`: copied links (`shared-links.txt`), commented posts (`commented.txt`) and diagnostics
 of videos that hit the time limit (`maxwatch-*.npz`).
 
 ### Good to know
+
+- **Skip list:** put profiles whose videos you never want played in `skip-profiles.txt` next to
+  the tool (or `--skip-profiles FILE`), one per line — `name`, `@name` or the profile's link,
+  `#` for comments. Their posts are passed over in the feed without opening them (no 2x, no
+  like or other action), logged as `⏭ auto-skipped (skip list: name)`. Edit the file while the
+  tool runs: it's read again by itself at the next post, and **u** reloads it at once — the
+  statistics are kept. The Windows app creates an example file on its first start.
 
 - **Battery saver slows it down:** with the phone's battery saver on, each step takes longer
   (~2 s more per video on the test phone); the startup block says when it's on.

@@ -35,6 +35,7 @@ Contents
    - 4.14 [profile_blocker](#414-profile_blocker) — the second tool: block / unblock a list of profiles
    - 4.15 [Phone battery](#415-phone-battery) — warnings, a pause until charging when low, `--battery-stop`
    - 4.16 [Time between videos](#416-time-between-videos) — what it costs and what made it shorter
+   - 4.17 [Skip list](#417-skip-list) — profiles skipped without playing, `skip-profiles.txt`, key u
 5. [How things were tested (and how to re-test)](#5-how-things-were-tested-and-how-to-re-test)
 6. [Known limitations and ideas](#6-known-limitations-and-ideas)
 7. [Pitfalls checklist](#7-pitfalls-checklist)
@@ -71,6 +72,7 @@ all use.
 | | `--2x` | (off) | lock 2x speed for each video (normal speed otherwise) |
 | | `--loops N` | 1 | passes to watch per video |
 | | `--max-watch S` | 300 | cap per video |
+| | `--skip-profiles FILE` | `skip-profiles.txt` next to the app | profiles whose videos are skipped without playing (4.17) |
 | | `--brightness PERCENT` | unchanged | phone screen brightness at start, restored at the end (4.13) |
 | **actions** on videos watched to the end, done in screen order | `--like none\|followed\|all` | `followed` | which ones get liked |
 | | `--comment none\|followed\|all` + `--comment-text TEXT` or `--comment-script FILE` | `none` | which get the comment (public; once per post, `runs/commented.txt`; 4.7e) |
@@ -96,6 +98,7 @@ Keys while running (only when started from a terminal):
 | **<** / **>** | phone screen dimmer / brighter (4.13) |
 | **a** | the phone's own brightness again, the app leaves it alone (4.13) |
 | **e** | battery saver off ↔ on for the run; the phone's own back at the end and while paused (4.15) |
+| **u** | reload the skip list (`skip-profiles.txt`, 4.17) — an edited file is also read again by itself |
 | **w** | cycle play mode: followed → all |
 | **l** | cycle like mode: none → followed → all |
 | **m** | cycle comment mode: none → followed → all (only with `--comment-text` or `--comment-script`) |
@@ -110,11 +113,12 @@ At startup the app prints a block with the phone, the Instagram version, the set
 phone's battery:
 
 ```
-── feed_autoplay 0.11.1 ─────────────────────────────────────────
+── feed_autoplay 0.12.0 ─────────────────────────────────────────
    phone      Samsung SM-A515F · Android 11 · serial R58N91XKQZT · Wi-Fi
    instagram  451.0.0.53.80
    playback   play all · 2x on · max 300 s per video
    actions    like all · comment none · repost followed · copy link none · save none
+   skip list  12 profiles (skip-profiles.txt)
    battery    64% · discharging · 31 °C · pauses at 10% until charging · battery saver off
    end        Instagram's log + frame comparison
    keys       press h for help
@@ -235,7 +239,7 @@ and gets fewer antivirus false alarms.
   `--battery-stop`, 4.15), v0.9.0 (shorter time between videos, 4.16), v0.9.1 (likes confirmed by count and icon — a
   second tap had been removing them; like refusals counted and paused, 4.7), v0.10.0 (`--battery-saver`, key e, 4.15), v0.10.1 (battery saver state in the statistics), v0.10.2 (and always in the startup block), v0.11.0 (low battery pauses until charging
   instead of stopping; warnings every 2 min, 4.15), v0.11.1 (unplugging at a low level warned
-  at once; battery read every 30 s there; likes on posts that hide their count no longer undone). The release pages of v0.2.0–v0.2.2 were deleted
+  at once; battery read every 30 s there; likes on posts that hide their count no longer undone), v0.12.0 (skip list, key u, 4.17). The release pages of v0.2.0–v0.2.2 were deleted
   on 2026-10-22 (superseded; nobody depended on them) and the one of v0.5.0 on 2026-10-23
   (superseded by v0.5.1 the same day: its scrolling bug); their **tags are kept** as the record
   of each version. To rebuild an old zip: Actions → windows-release → Run workflow → pick the
@@ -310,7 +314,7 @@ android-instagram-tools/
 ├── packaging/                    the Windows app: spec, build.py, files for the zip (1)
 ├── .github/workflows/            windows-release.yml: builds and publishes the zip on v* tags
 ├── examples/                     comment_greeting.py: a --comment-script (4.7e)
-├── tests/                        checks without a phone (test_ui_text.py 4.12, test_pause_stats.py 4.10, 4.11, test_brightness.py 4.13, test_comment.py 4.7e, test_profile_blocker.py 4.14, test_battery.py 4.15, test_navigation.py 4.16, test_like.py 4.7)
+├── tests/                        checks without a phone (test_ui_text.py 4.12, test_pause_stats.py 4.10, 4.11, test_brightness.py 4.13, test_comment.py 4.7e, test_profile_blocker.py 4.14, test_battery.py 4.15, test_navigation.py 4.16, test_like.py 4.7, test_skip_list.py 4.17)
 └── Dockerfile, compose.yaml, README.md, DEVELOPMENT.md, CONTAINER.md
 ```
 
@@ -323,6 +327,7 @@ Until then `feed_autoplay.py` holds everything shared and `profile_blocker.py` i
 | `Keys` | non-blocking key reader (termios/select on Linux/macOS, msvcrt on Windows); inert when stdin isn't a TTY |
 | `STOP_FILE` (`runs/STOP`) | checked in `Player.poll()`: creating it stops the run cleanly (stats printed); cleared at startup |
 | `PAUSE_FILE` (`runs/PAUSE`) | checked in `Player.key()`: while it exists the run is paused (`Player.pause`); cleared at startup |
+| `SkipList` / `load_skip_list` / `parse_profiles` | the skip list (4.17): the file parsed once per version (`lru_cache`), authors of a post, the skip in `find_video_header`; `parse_profiles` shared with profile_blocker |
 | `Battery` / `read_battery` / `Player.check_battery` | the phone's battery: warnings, the clean stop, charger events, heat (4.15) |
 | `Brightness` | the phone's screen brightness: keys < >, `--brightness`, saved and restored (4.13) |
 | `Player.pause` / `Resumed` | the hand-the-phone-over pause (4.10); `Resumed` sends the run back to the Home feed |
@@ -970,6 +975,7 @@ with the current mode marked inside each key's cycle:
               <  >  brightness    dimmer / brighter         now 30%
               a  brightness       the phone's own again     (adaptive if it was)
               e  battery saver    off ↔ on                  now the phone's own
+              u  skip list        reload the file           12 profiles now
    actions    l  like mode        none → followed → [all]
    (screen    m  comment mode     none → [followed] → all   public, under your name
     order)    r  repost mode      none → [followed] → all   shows on your profile
@@ -1054,7 +1060,7 @@ Logged every 20 played videos, on quit and on key **s** (`Player.report`):
 
 ```
 ── stats after 10h 42m (active 5h 04m) ─────────────────────────
-   videos   played 304 · skipped 0 · suggested not played 0
+   videos   played 304 · skipped 0 · suggested not played 0 · auto-skipped 7 (skip list: 12)
    pace     ~62 videos/h at the current pace (likely 46–77)
             whole run 28.4/h (60.0/h active)
    actions  liked 302 (refused 0) · commented 0 (refused 0) · reposted 0 (refused 0) · links copied 0 · saved 0
@@ -1532,6 +1538,36 @@ the video lengths differ), so single short runs were misleading — see the medi
 the swipe's start/end and fallback, the "nothing ends above 0.05·h" guarantee, when the full
 feed check runs, one read for all the "before" counts.
 
+### 4.17 Skip list
+
+Profiles whose videos are skipped without playing — no 2x, no like / comment / repost / link /
+save: `skip-profiles.txt` next to the app (the project folder; the Windows app: next to the
+exe, created there with commented examples on its first start and not in the zip, so updates
+keep it), or `--skip-profiles FILE`. Same format as profile_blocker's list (4.14): one per
+line, `name`, `@name` or the profile's link, `#` comments; `parse_profiles()` now lives in
+feed_autoplay.py and profile_blocker imports it. The project folder's `skip-profiles.txt` is
+git-ignored (personal); the template is `packaging/windows/skip-profiles.txt`.
+
+- **Where:** in the feed scan (`find_video_header`), before a post is opened — the cheapest
+  point: nothing is tapped or played. The post's authors come from its header (`SkipList.authors`:
+  the text before "posted a video" / "postou um video", split at " and " / " e "; "2 others" /
+  "mais 2" dropped), so a collaboration with one listed author is skipped too. Case doesn't
+  matter; a name must match whole (`chef.marco.fan` isn't `chef.marco`). Logged
+  `⏭ auto-skipped (skip list: name): <header>`, counted once per post (`remember()`).
+- **Cache:** `load_skip_list(path, mtime_ns, size)` is a `functools.lru_cache`: the file is
+  parsed once per version; each look costs one `os.stat()` (the cache key), not a read. An
+  edited file is read again by itself at the next post (`skip list reloaded: …`); key **u**
+  clears the cache and reloads at once — the statistics are kept.
+- **Shown:** startup `skip list  12 profiles (skip-profiles.txt)` (or `none (… not found)`,
+  plus lines not understood); statistics `auto-skipped N (skip list: 12)`; help `u  skip list`.
+- **Container:** the app's folder is the image, so put the list in `runs/` and pass
+  `--skip-profiles runs/skip-profiles.txt`.
+- **Tested (2026-11-05):** `tests/test_skip_list.py` (the file, authors incl. collabs and pt-BR,
+  matching, one parse for 50 looks, the reload by itself and with u, the skip in the feed scan,
+  counted once). Live: listed the account at the top of the feed → 2 of its posts auto-skipped,
+  the next video played, `auto-skipped 2 (skip list: 2)`; an edit to the file + u → `skip list
+  reloaded: 6 profiles`.
+
 ## 5. How things were tested (and how to re-test)
 
 **Without a phone.** `uv run tests/test_ui_text.py` checks all language-dependent text
@@ -1542,7 +1578,8 @@ comment record and options (4.7e); `uv run tests/test_profile_blocker.py`
 checks profile_blocker's list parsing, results file and screen checks (4.14); `uv run
 tests/test_battery.py` the battery warnings and stop on a simulated phone and clock (4.15);
 `uv run tests/test_navigation.py` the time-saving navigation logic (4.16); `uv run
-tests/test_like.py` how a like is confirmed, the second tap and refusals (4.7).
+tests/test_like.py` how a like is confirmed, the second tap and refusals (4.7); `uv run
+tests/test_skip_list.py` the skip list: file, authors, cache, reload, the skip (4.17).
 
 **Live runs.** Run the script for a few minutes with `timeout -s INT 300 … < /dev/null > log`
 and read the log. To test keys without a person at the keyboard, feed them through a

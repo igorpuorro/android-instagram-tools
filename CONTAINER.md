@@ -61,6 +61,7 @@ docker compose logs --no-log-prefix app > runs\run-<date>.log    # keep the outp
   `runs\` folder next to `compose.yaml` gets `shared-links.txt` (copied links),
   `commented.txt` (commented posts) and `maxwatch-*.npz` (diagnostics). A `--comment-script`
   must be in `runs\` too (e.g. `--comment-script runs/greet.py`): `examples/` isn't in the image.
+  The same for a skip list: `--skip-profiles runs/skip-profiles.txt`.
 
 **Helpers:**
 - `docker compose run --rm app adb devices` — what adb sees.
